@@ -1,0 +1,10 @@
+Módy:
+
+-l Local sync (lokální synchronizace)
+  Provádí se synchronizace na lokální server.
+  V tomto režimu není možné použít zpětnou synchronizaci (-b)
+
+-b Backword sync (zpětná synchronizace)
+  Kontrolují se pouze soubory na FTP. Program vypíše všechny, které byly změněny od poslední synchronizace.
+  Pouze pro FTP režim.
+

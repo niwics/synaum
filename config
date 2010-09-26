@@ -1,0 +1,11 @@
+# Synchronization configuration in format:
+# - sync set name
+# - path to the source set folder in local computer
+# - ftp server
+# - FTP username
+# - path to the target (web) folder in localhost
+# Params should be separated by spaces on one line for each sychnchronization set
+# Example:
+#myweb /projects/myweb ftp.myweb.com my-username my-password /var/www/myweb
+admin.spjf /Gorazd/admin-spjf admin_spjf meYaizai6hua6re /var/www/SPJFweb/admin.spjf
+
