@@ -28,6 +28,7 @@ class Synaum
   @dst_dir
   @last_date
   @last_mode
+  @sync_file
 
   def initialize
     # default values
@@ -168,6 +169,8 @@ class Synaum
   
   def synchronize
     @src_dir = @src_dir + '/www'
+    @dst_dir = @ftp ? @ftp_dir : @local_dir
+    check_dst_dir
     if @local or @deep
       synchronize_local
     else
@@ -178,8 +181,25 @@ class Synaum
 
 
   def synchronize_local
-    @dst_dir = @local_dir
+    # do synchronization
+    sync_modules
+    sync('/', @src_dir, true)
 
+  end
+
+
+  def synchronize_remote
+    # connect to FTP
+    ftp = Net::FTP.new
+    ftp.connect(server_name)
+    ftp.login(username, password)
+    ftp.chdir(directory)
+    ftp.getbinaryfile(filename)
+    ftp.close
+  end
+
+
+  def check_dst_dir
     # check existency of local folder
     if !@dst_dir
       return err 'Nebyla zadána cesta pro lokální režim (= hodnota "path" v konfiguračním souboru "'+ @src_dir +'/synaum")'
@@ -197,10 +217,13 @@ class Synaum
     if !File.exist?(@dst_dir)
       Dir.mkdir(@dst_dir, 0775)
     end
+  end
 
+
+  def load_log_file
     # try to load the sync file with the last modification time
     sync_filename = @dst_dir + '/' + 'synaum-log'
-    sync_file = File.new(sync_filename, "r+")
+    @sync_file = File.new(sync_filename, "r+")
     while line = sync_file.gets
       line.chomp!
       if line[0,1] != '#' and line != ''
@@ -213,11 +236,10 @@ class Synaum
         end
       end
     end
+  end
 
-    # do synchronization
-    sync_modules
-    sync('/', @src_dir, true)
 
+  def write_log_file
     # write sync data to the sync file
     now_date = Time.now
     mode = @ftp ? 'ftp' : (@local ? 'local' : 'deep')
@@ -227,19 +249,7 @@ class Synaum
 last-synchronized #{now_date}
 mode #{mode}
 EOT
-    sync_file.syswrite(log_msg)
-  end
-
-
-  def synchronize_remote
-    @dst_dir = @ftp_dir+'/'+@website
-    # connect to FTP
-    ftp = Net::FTP.new
-    ftp.connect(server_name)
-    ftp.login(username, password)
-    ftp.chdir(directory)
-    ftp.getbinaryfile(filename)
-    ftp.close
+    @sync_file.syswrite(log_msg)
   end
 
 
