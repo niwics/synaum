@@ -1,10 +1,17 @@
-Módy:
+Módy programu Synaum:
+---------------------
 
--l Local sync (lokální synchronizace)
-  Provádí se synchronizace na lokální server.
-  V tomto režimu není možné použít zpětnou synchronizaci (-b)
-
--b Backword sync (zpětná synchronizace)
+-b Backward sync (zpětná synchronizace)
   Kontrolují se pouze soubory na FTP. Program vypíše všechny, které byly změněny od poslední synchronizace.
   Pouze pro FTP režim.
 
+-d Local deep sync (lokální synchronizace - "deep" (hluboká) kopie souborů)
+  Provádí se synchronizace na lokální server.
+  Do cílové složky jsou přímo kopírovány všechny soubory - narozdílod módu "l",
+   kdy se jen vytváří symlinky.
+
+-l Local sync (lokální synchronizace)
+  Provádí se synchronizace na lokální server.
+  V cílové složce jsou pouze vytvářeny symlinky do zdrojové složky, což je
+   výhodné pro vývoj webu - není třeba synchronizovat při každé změně soburů.
+  V tomto režimu není možné použít zpětnou synchronizaci (-b)

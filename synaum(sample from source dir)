@@ -1,0 +1,17 @@
+# Synaum synchronization configuration fot this website
+
+# address of the FTP server
+#ftp my-website.com
+
+# target folder on the FTP server (relative from the FTP root)
+#ftp-dir http/www
+
+# username for the FTP server
+#username my-username
+
+# password for the FTP server
+#password my-secure-password
+
+# path to the target (web) directory on localhost
+#local-dir /var/www/my-website
+local-dir /var/www/SPJFweb/admin.spjf
