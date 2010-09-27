@@ -15,3 +15,25 @@
 # path to the target (web) directory on localhost
 #local-dir /var/www/my-website
 local-dir /var/www/SPJFweb/admin.spjf
+
+# required modules from other websites. Modules should be set in format
+#  module-name@website, where website is name of the website or the local path
+#  to its source folder.
+# For adding all modules from website, you shouldn't specify the module name (ex. "@other-web")
+# It's possible to omit website when you want to use system module
+#  (=from gorazd-system pseudo-website)
+# If no module from system pseudo-website is used, then all modules from it
+#  will be used automatically.
+#modules test@someweb @other-web
+modules tokelau-shared@dlouhodobka
+
+# excluded modules from other websites. Modules should be set in format
+#  module-name@website, where website is name of the website or the local path
+#  to its source folder.
+# Module names are required.
+# Excluded modules have higher priority (= module in "modules" and "excluded-modules"
+#  won't be used.
+# It's possible to omit website when you want to use system module
+#  (=from gorazd-system pseudo-website)
+#excluded-modules test@someweb module@other-web
+excluded-modules system

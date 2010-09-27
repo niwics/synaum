@@ -1,18 +1,20 @@
 #!/usr/bin/ruby
+# author Miroslav Kvasnica - niwi (miradrda@volny.cz), niwi.cz
 require 'net/ftp'
 
 class Synaum
 
-  POSSIBLE_PARAMS = ['l', 'b']
+  POSSIBLE_PARAMS = ['b', 'd', 'l']
 
-  @error = false
+  @error
 
   @website
   @src_dir
   @params
 
-  @local = false
-  @backward = false
+  @backward
+  @deep
+  @local
 
   @ftp
   @ftp_dir
@@ -20,16 +22,18 @@ class Synaum
   @password
   @local_dir
   @modules
-  @exclude_modules
+  @excluded_modules
 
   @config_dir
   @dst_dir
   @last_date
+  @last_mode
 
   def initialize
     # default values
     @local_dir = ''
-    @modules = ['@gorazd-system']
+    @modules = []
+    @excluded_modules = []
     @last_date = Time.mktime(1970, 1, 1)
     parse_params
     if !@error
@@ -63,13 +67,12 @@ class Synaum
       @params = @params[1..-1] #TODO frozen...
       @params.each_char do |i|
         case i
-        when 'l':
-          @local = true
-        when 'b':
-          @backward = true
+        when 'b' then @backward = true
+        when 'd' then @deep = true
+        when 'l' then @local = true
         else
           echo 'Zadán neplatný přepínač: "' + i + '".'
-          return err 'Povolené přepínače: ' + POSSIBLE_PARAMS.join('') + '.'
+          return err 'Povolené přepínače: "' + POSSIBLE_PARAMS.join('", "') + '".'
         end
       end
     else
@@ -85,6 +88,7 @@ class Synaum
     if website.index('/') # - was the website name set with a path?
       return website
     else
+      module_msg = website != @website ? ' modulu z' : ''
       # try to select the website from the parent folder
       orig_path = Dir.pwd
       Dir.chdir(File.dirname(__FILE__))
@@ -93,12 +97,11 @@ class Synaum
       Dir.chdir(orig_path)
       if !File.exist?(src_dir)
         # try to load path from the config file
-        puts src_dir
         if @config_dir != nil
           src_dir = @config_dir+'/'+website
-        elsif !File.exist?("config")
+        elsif !File.exist?(File.dirname(__FILE__)+"/config")
           @config_dir = false # for future use
-          echo 'Nepodařilo se najít složku "'+ src_dir +'" pro provedení synchronizace webu "'+ website +'", ani nebyl nalezen soubor "config", odkud by bylo možné načíst cestu k této složce.'
+          echo 'Nepodařilo se najít složku "'+ src_dir +'" pro provedení synchronizace'+ module_msg +' webu "'+ website +'", ani nebyl nalezen soubor "'+ File.dirname(__FILE__) +'/config", odkud by bylo možné načíst cestu k této složce.'
           return err "Možné zadání cesty ke složce:\n - jako parametr skriptu (např. /work/my-website)\n - v parametru jen název složky např. my-website)\n     - a tato složka musí být umístěna vedle složky se tímto Synaum skriptem\n     - NEBO cesta musí být zadána v souboru config umístěném vedl tohoto Synaum skriptu."
         else
           # load value from config file
@@ -112,7 +115,7 @@ class Synaum
             end
           end
           if !File.exist?(src_dir)
-            return err 'Nebyla nalezena složka "'+ src_dir +'" pro provedení synchronizace webu "' + website + '".'
+            return err 'Nebyla nalezena složka "'+ src_dir +'" pro provedení synchronizace'+ module_msg +' webu "' + website + '".'
           end
         end
       end
@@ -124,35 +127,40 @@ class Synaum
 
   def load_settings
     # load data from the config file
-    Dir.chdir(@src_dir)
-    if !File.exist?('synaum')
+    if !File.exist?(@src_dir+'/synaum')
       return err 'Nebyl nalezen soubor "synaum" potřebný k synchronizaci webu "'+ @website +'".'
     end
-    synaum_file = File.open('synaum')
+    synaum_file = File.open(@src_dir+'/synaum')
     while line = synaum_file.gets
       line.chomp!
       if line[0,1] != '#' and line != ''
-        values = line.split(' ')
-        case values[0]
-          when 'ftp' then @ftp = values[1]
-          when 'ftp-dir' then @ftp_dir = values[1]
-          when 'username' then @username = values[1]
-          when 'password' then @password = values[1]
-          when 'local-dir' then @local_dir = values[1]
-          when 'modules' then @modules = values[1]
-          when 'exclude-modules' then @exclude_modules = values[1]
+        name, value = line.split(' ', 2)
+        case name
+          when 'ftp' then @ftp = value
+          when 'ftp-dir' then @ftp_dir = value
+          when 'username' then @username = value
+          when 'password' then @password = value
+          when 'local-dir' then @local_dir = value
+          when 'modules' then @modules = value.split(' ')
+          when 'excluded-modules' then @excluded_modules = value.split(' ')
+        else
+          return err 'Neznámý parametr "'+ name +'" v konfiguračním souboru "'+ @src_dir+'/synaum' +'".'
         end
       end
     end
     
-    # set modes
-    if @params.index('l')
-      echo 'Lokální synchronizace webu "'+ @website +'"...'
-      @local = true
+    # info message
+    if @local
+      msg = 'Lokální'
+    elsif @deep
+      msg = 'Hluboká lokální'
+    else
+      msg = 'FTP'
     end
-    if @params.index('b')
-      @backward = true
+    if @backward
+      msg = msg + ' ZPĚTNÁ'
     end
+    echo msg+' synchronizace webu "'+ @website +'"...'
     return true
   end
 
@@ -160,7 +168,7 @@ class Synaum
   
   def synchronize
     @src_dir = @src_dir + '/www'
-    if @local
+    if @local or @deep
       synchronize_local
     else
       synchronize_remote
@@ -190,21 +198,36 @@ class Synaum
       Dir.mkdir(@dst_dir, 0775)
     end
 
-    # try to load the file with last modification date
-    last_filename = @dst_dir + '/' + 'synaum-last'
-    if File.exist?(last_filename)
-      last_file = File.open(last_filename)
-      while line = last_file.gets
-        line.chomp!
-        if line[0,1] != '#' and line != ''
-          @last_date = Time.marshal_load(line)
+    # try to load the sync file with the last modification time
+    sync_filename = @dst_dir + '/' + 'synaum-log'
+    sync_file = File.new(sync_filename, "r+")
+    while line = sync_file.gets
+      line.chomp!
+      if line[0,1] != '#' and line != ''
+        name, value = line.split(' ', 2)
+        case name
+          when 'last-synchronized' then @last_date = Time.mktime(value)
+          when 'mode' then @last_mode = value
+        else
+          return err 'Neznámý parametr "'+ name +'" v konfiguračním souboru "'+ sync_filename +'".'
         end
       end
     end
 
     # do synchronization
     sync_modules
-    return sync('/', true)
+    sync('/', @src_dir, true)
+
+    # write sync data to the sync file
+    now_date = Time.now
+    mode = @ftp ? 'ftp' : (@local ? 'local' : 'deep')
+    log_msg = <<EOT
+# Log synchronizacniho skriptu Synaum pro system Gorazd
+# author Miroslav Kvasnica - niwi (miradrda@volny.cz), niwi.cz
+last-synchronized #{now_date}
+mode #{mode}
+EOT
+    sync_file.syswrite(log_msg)
   end
 
 
@@ -226,38 +249,103 @@ class Synaum
       Dir.mkdir(@dst_dir+'/modules', 0775)
     end
 
-    # modules from the website
-    sync('/modules/')
-    # other modules
+    # collect info about modules from other websites
+    modules = {}
     @modules.each do |mod|
-      # get module path and module_name
-      path, name = mod.split('@')
-      
-      puts path + '...' + name
+      add_other_modules(mod, modules)
+    end
+    # automatically add
+    system_dir = get_website_dir('gorazd-system')
+    if !system_dir
+      return false
+    end
+    if !modules[system_dir]
+      add_other_modules('@gorazd-system', modules)
+    end
+
+    # remove excluded modules from hash
+    @excluded_modules.each do |mod|
+      # get module name and its website
+      name, website = mod.split('@')
+      if !website
+        website = 'gorazd-system'
+      end
+      src_dir = get_website_dir(website)
+      if !src_dir
+        return false
+      end
+      if name == ""
+        return err 'Není povoleno zadat "excluded-modules" bez jména modulu (bylo zadáno"'+ mod +'").'
+      elsif modules[src_dir].instance_of? Array
+        modules[src_dir].delete(name)
+      end
+    end
+
+    # do sync with modules from other websites
+    p modules
+    modules.each do |src_dir, modules_array|
+      path = src_dir+'/www/modules'
+      # => check existency of module folders
+      modules_array.each do |mod|
+        modpath = path+'/'+mod
+        if !File.exist?(modpath)
+          return err 'Zadaný modul "'+ modpath +'" neexistuje.'
+        elsif !File.directory?(modpath)
+          return err 'Zadaný modul "'+ modpath +'" není složka, ale je to soubor.'
+        end
+      end
+      sync('/modules/', src_dir+'/www', false, modules_array)
+    end
+    # do sync with modules from this website
+    sync('/modules/', @src_dir)
+  end
+
+
+  def add_other_modules (mod, modules)
+    # get module name and its website
+    name, website = mod.split('@')
+    if !website
+      website = 'gorazd-system'
+    end
+    src_dir = get_website_dir(website)
+    if !src_dir
+      return false
+    end
+    if modules[src_dir] == nil
+      modules[src_dir] = []
+    end
+    if name == ""
+      Dir.foreach(src_dir+'/www/modules') do |file|
+        if file != '.' and file != '..'
+          modules[src_dir] << file
+        end
+      end
+    else
+      modules[src_dir] << name
     end
   end
 
 
   
-  def sync (dir, is_root = false)
-    Dir.foreach(@src_dir + dir) do |file|
-      if file != '.' and file != '..' and (!is_root or file != 'modules')
+  def sync (dir, src_root, is_root = false, allowed_files = nil)
+    Dir.foreach(src_root + dir) do |file|
+      if file != '.' and file != '..' and (!is_root or file != 'modules') and (!allowed_files or allowed_files.include?(file))
         if @local
           if !File.exist?(@dst_dir+dir+file)
-            File.symlink(@src_dir+dir+file, @dst_dir+dir+file)
+            File.symlink(src_root+dir+file, @dst_dir+dir+file)
           end
-        elsif File.file?(@src_dir+dir+file)
+        elsif File.file?(src_root+dir+file)
           # check existency and modification time
           if !file_exists(dir+file)
             file_move(dir+file)
           elsif file_modified(dir+file)
             puts 'REMOTE-MODIFIED: '+ dir+file
-          elsif File.stat(@src_dir+dir+file).mtime > @last_date
+          elsif File.stat(src_root+dir+file).mtime > @last_date
             file_move(dir+file)
           end
         else
           exists_create dir+file
-          sync(dir + file + '/')
+          sync(dir + file + '/', src_root)
         end
       end
     end
@@ -283,7 +371,7 @@ class Synaum
 
 
   # Returns true when new dir was created
-  def exists_create (dir)
+  def exists_create (dir, src_root)
     if !@local
       return err 'nedodelano exists_create pro FTP'
     end
@@ -293,7 +381,7 @@ class Synaum
     else
       echo "DIR vytvarim... "+@dst_dir + dir
       if @local
-        File.symlink(@src_dir + dir, @dst_dir + dir)
+        File.symlink(src_root + dir, @dst_dir + dir)
       else
         Dir.mkdir(@dst_dir + dir, 0775)
         return err 'NEIMPLEMENTOVANO - vytvareni dir v exists_create'
@@ -308,7 +396,7 @@ class Synaum
 
 
   def err (message)
-    echo message
+    puts "!!! " + message
     @error = true
     return false
   end
