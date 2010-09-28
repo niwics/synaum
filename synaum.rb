@@ -131,7 +131,7 @@ class Synaum
           src_dir = @config_dir+'/'+website
         elsif !File.exist?(File.dirname(__FILE__)+"/config")
           @config_dir = false # for future use
-          echo 'Nepodařilo se najít složku "'+ src_dir +'" pro provedení synchronizace'+ module_msg +' webu "'+ website +'", ani nebyl nalezen soubor "'+ File.dirname(__FILE__) +'/config", odkud by bylo možné načíst cestu k této složce.'
+          err 'Nepodařilo se najít složku "'+ src_dir +'" pro provedení synchronizace'+ module_msg +' webu "'+ website +'", ani nebyl nalezen soubor "'+ File.dirname(__FILE__) +'/config", odkud by bylo možné načíst cestu k této složce.'
           return err "Možné zadání cesty ke složce:\n - jako parametr skriptu (např. /work/my-website)\n - v parametru jen název složky např. my-website)\n     - a tato složka musí být umístěna vedle složky se tímto Synaum skriptem\n     - NEBO cesta musí být zadána v souboru config umístěném vedl tohoto Synaum skriptu."
         else
           # load value from config file
@@ -190,7 +190,7 @@ class Synaum
     if @backward
       msg = msg + ' ZPĚTNÁ'
     end
-    echo msg+' synchronizace webu "'+ @website +'"...'
+    real_echo msg+' synchronizace webu "'+ @website +'"...'
     return true
   end
 
@@ -342,7 +342,7 @@ EOT
     if @debug
       echo 'Synchronizuji moduly z ostatních webů: '
       modules.each do |src_dir, modules_array|
-        puts '   z ' + src_dir + ': ' + modules_array.join(', ')
+        echo '   z ' + src_dir + ': ' + modules_array.join(', '), false
       end
     end
     # do sync with modules from other websites
@@ -415,7 +415,7 @@ EOT
             file_move(src_root+dir+file, @dst_dir+dir+file)
           end
           if dst_modified and (@verbose or src_modified)
-            puts 'REMOTE-MODIFIED: '+ dir+file
+            echo 'REMOTE-MODIFIED: '+ dir+file
           end
         end
       end
@@ -443,19 +443,13 @@ EOT
 
   def file_move (src, dst)
     if @ftp
-      if @verbose
-        puts 'Kopíruji soubor "'+ dst +'".'
-      end
+      echo 'Kopíruji soubor "'+ dst +'".'
       puts 'NEIMP move'
     elsif @local
-      if @verbose
-        puts 'Vytvářím symlink na soubor "'+ dst +'".'
-      end
+      echo 'Vytvářím symlink na soubor "'+ dst +'".'
       File.symlink(src, dst)
     else
-      if @verbose
-        puts 'Kopíruji soubor "'+ dst +'".'
-      end
+      echo 'Kopíruji soubor "'+ dst +'".'
       FileUtils.cp(src, dst)
     end
     @created_files += 1
@@ -468,9 +462,7 @@ EOT
       return err 'Funkci "Synaum::mkdir" nelze použít v režimu "local".'
     end
 
-    if @verbose
-      puts 'Vytvářím složku "'+ dir +'".'
-    end
+    echo 'Vytvářím složku "'+ dir +'".'
     
     if @deep
       Dir.mkdir(dir, 0775)
@@ -527,14 +519,14 @@ EOT
   def print_result_message
     nochange = ''
     if @created_files + @created_dirs > 0
-      echo "Bylo synchronizováno #{@created_files} souborů a vytvořeno #{@created_dirs} složek."
+      real_echo "Bylo synchronizováno #{@created_files} souborů a vytvořeno #{@created_dirs} složek."
     else
       nochange = ' Nebyly provedeny žádné změny.'
     end
     if @error
       err 'Synchronizace nebyla provedena!'
     else
-      echo 'Synchronizace proběhla úspěšně.' + nochange
+      real_echo 'Synchronizace proběhla úspěšně.' + nochange
     end
   end
 end
