@@ -16,6 +16,7 @@ class Synaum
   @src_dir
   @params
 
+  @mode
   @backward
   @deep
   @local
@@ -29,6 +30,7 @@ class Synaum
   @modules
   @excluded_modules
 
+  @output_log
   @config_dir
   @dst_dir
   @last_date
@@ -46,6 +48,9 @@ class Synaum
     @last_date = Time.mktime(1970, 1, 1)
     @created_dirs = @created_files = 0
     parse_params
+    if !@error
+      open_output_log
+    end
     if !@error
       @src_dir = get_website_dir(@website)
     end
@@ -83,14 +88,27 @@ class Synaum
         when 'l' then @local = true
         when 's' then @verbose = false
         else
-          echo 'Zadán neplatný přepínač: "' + i + '".'
-          return err 'Povolené přepínače: "' + POSSIBLE_PARAMS.join('", "') + '".'
+          err 'Zadán neplatný přepínač: "' + i + '".'
+          echo 'Povolené přepínače: "' + POSSIBLE_PARAMS.join('", "') + '".'
+          return false
         end
       end
     else
       @params = ''
     end
+    @mode = @ftp ? 'ftp' : (@local ? 'local' : 'deep')
     return true
+  end
+
+
+  def open_output_log
+    # create dirs if they don't exist
+    this_dir = File.dirname(__FILE__)
+    now = Time.now().strftime("%d-%m-%Y, %H:%M:%S (%A)")
+    cond_mkdir_local(this_dir+'/logs')
+    cond_mkdir_local(this_dir+'/logs/'+@website)
+    cond_mkdir_local(this_dir+'/logs/'+@website+'/'+@mode)
+    @output_log = File.open(this_dir+'/logs/'+@website+'/'+@mode+'/'+now, "w")
   end
 
 
@@ -222,9 +240,7 @@ class Synaum
     end
 
     # check the local directory
-    if !File.exist?(@dst_dir)
-      Dir.mkdir(@dst_dir, 0775)
-    end
+    cond_mkdir_local(@dst_dir)
     return true
   end
 
@@ -274,12 +290,11 @@ class Synaum
     end
     # write sync data to the sync file
     now_date = Time.now.strftime(DATE_FORMAT)
-    mode = @ftp ? 'ftp' : (@local ? 'local' : 'deep')
     log_msg = <<EOT
 # Log synchronizacniho skriptu Synaum pro system Gorazd
 # author Miroslav Kvasnica - niwi (miradrda@volny.cz), niwi.cz
 last-synchronized #{now_date}
-mode #{mode}
+mode #{@mode}
 EOT
     sync_file = File.new(@dst_dir + '/' + 'synaum-log', "w")
     sync_file.syswrite(log_msg)
@@ -466,20 +481,46 @@ EOT
   end
 
 
+  def cond_mkdir_local (dir)
+    if !File.exist?(dir)
+      Dir.mkdir(dir, 0775)
+    end
+  end
+
+
+
   def is_error?
     return @error
   end
 
 
   def err (message)
-    puts "!!! " + message
+    real_echo("!!! " + message, false)
     @error = true
     return false
   end
 
 
-  def echo (message)
-    puts "> " + message
+  def echo (message, formatted = true)
+    if @verbose
+      real_echo(message, formatted)
+    else
+      log_msg(msg)
+    end
+  end
+
+
+  def real_echo (message, formatted = true)
+    msg = (formatted ? '> ' :'') + message
+    puts msg
+    log_msg(msg)
+  end
+
+
+  def log_msg (msg)
+    if @output_log
+      @output_log.syswrite(msg+"\n")
+    end
   end
 
 
