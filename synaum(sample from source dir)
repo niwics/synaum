@@ -36,4 +36,4 @@ modules tokelau-shared@dlouhodobka
 # It's possible to omit website when you want to use system module
 #  (=from gorazd-system pseudo-website)
 #excluded-modules test@someweb module@other-web
-excluded-modules system
+excluded-modules systems

@@ -1,12 +1,15 @@
 #!/usr/bin/ruby
 # author Miroslav Kvasnica - niwi (miradrda@volny.cz), niwi.cz
 require 'net/ftp'
+require "fileutils"
 
 class Synaum
 
-  POSSIBLE_PARAMS = ['b', 'd', 'l']
+  POSSIBLE_PARAMS = ['b', 'd', 'f', 'l', 's']
 
   @error
+  @verbose
+  @debug
 
   @website
   @src_dir
@@ -15,6 +18,7 @@ class Synaum
   @backward
   @deep
   @local
+  @forced
 
   @ftp
   @ftp_dir
@@ -28,14 +32,18 @@ class Synaum
   @dst_dir
   @last_date
   @last_mode
-  @sync_file
+
+  @created_dirs
+  @created_files
 
   def initialize
     # default values
+    @verbose = true
     @local_dir = ''
     @modules = []
     @excluded_modules = []
     @last_date = Time.mktime(1970, 1, 1)
+    @created_dirs = @created_files = 0
     parse_params
     if !@error
       @src_dir = get_website_dir(@website)
@@ -70,7 +78,9 @@ class Synaum
         case i
         when 'b' then @backward = true
         when 'd' then @deep = true
+        when 'f' then @forced = true
         when 'l' then @local = true
+        when 's' then @verbose = false
         else
           echo 'Zadán neplatný přepínač: "' + i + '".'
           return err 'Povolené přepínače: "' + POSSIBLE_PARAMS.join('", "') + '".'
@@ -170,25 +180,22 @@ class Synaum
   def synchronize
     @src_dir = @src_dir + '/www'
     @dst_dir = @ftp ? @ftp_dir : @local_dir
-    check_dst_dir
-    if @local or @deep
-      synchronize_local
-    else
-      synchronize_remote
+    check_dst_dir or return false
+    load_log_file or return false
+    if @ftp
+      ftp_connect
     end
+    # do synchronization
+    sync_modules
+    if !@error
+      sync('/', @src_dir, true)
+    end
+    write_log_file
     return true
   end
 
 
-  def synchronize_local
-    # do synchronization
-    sync_modules
-    sync('/', @src_dir, true)
-
-  end
-
-
-  def synchronize_remote
+  def ftp_connect
     # connect to FTP
     ftp = Net::FTP.new
     ftp.connect(server_name)
@@ -217,31 +224,47 @@ class Synaum
     if !File.exist?(@dst_dir)
       Dir.mkdir(@dst_dir, 0775)
     end
+    return true
   end
 
 
   def load_log_file
     # try to load the sync file with the last modification time
     sync_filename = @dst_dir + '/' + 'synaum-log'
-    @sync_file = File.new(sync_filename, "r+")
-    while line = sync_file.gets
-      line.chomp!
-      if line[0,1] != '#' and line != ''
-        name, value = line.split(' ', 2)
-        case name
-          when 'last-synchronized' then @last_date = Time.mktime(value)
-          when 'mode' then @last_mode = value
-        else
-          return err 'Neznámý parametr "'+ name +'" v konfiguračním souboru "'+ sync_filename +'".'
+    if File.exist?(sync_filename)
+      sync_file = File.new(sync_filename, "r+")
+      while line = sync_file.gets
+        line.chomp!
+        if line[0,1] != '#' and line != ''
+          name, value = line.split(' ', 2)
+          case name
+            when 'last-synchronized' then
+              arr = value.split(', ')
+              vals = arr[0].split('/') + arr[1].split(':')
+              @last_date = Time.mktime(vals[2], vals[1], vals[0], vals[3], vals[4], vals[5]);
+            when 'mode' then @last_mode = value
+          else
+            return err 'Neznámý parametr "'+ name +'" v konfiguračním souboru "'+ sync_filename +'".'
+          end
         end
       end
+      # check modes compatibility
+      if @last_mode == 'local' and @deep
+        return err 'Minulý režim synchronizace byl "local", tedy s vytvořením symlinků do zdrojové složky. Není proto možné provést synchronizaci "deep". Smažte prosím nejdříve cílovou složku "'+ @dst_dir +'" nebo její obsah.'
+      elsif @last_mode == 'deep' and @local
+        return err 'Minulý režim synchronizace byl "deep", tedy s fyzickým kopírováním souborů do cílové složky. Není proto možné provést synchronizaci "local", která pracuje se symliky. Smažte prosím nejdříve cílovou složku "'+ @dst_dir +'" nebo její obsah.'
+      end
     end
+    return true
   end
 
 
   def write_log_file
+    if @debug
+      echo 'Zapisuji do výstupního logu...'
+    end
     # write sync data to the sync file
-    now_date = Time.now
+    now_date = Time.now.strftime("%d/%m/%Y, %H:%M:%S (%a)")
     mode = @ftp ? 'ftp' : (@local ? 'local' : 'deep')
     log_msg = <<EOT
 # Log synchronizacniho skriptu Synaum pro system Gorazd
@@ -249,14 +272,15 @@ class Synaum
 last-synchronized #{now_date}
 mode #{mode}
 EOT
-    @sync_file.syswrite(log_msg)
+    sync_file = File.new(@dst_dir + '/' + 'synaum-log', "w")
+    sync_file.syswrite(log_msg)
   end
 
 
   def sync_modules
     # create module dir if not exists
     if !File.exist?(@dst_dir+'/modules')
-      Dir.mkdir(@dst_dir+'/modules', 0775)
+      mkdir(@dst_dir+'/modules', 0775)
     end
 
     # collect info about modules from other websites
@@ -291,8 +315,13 @@ EOT
       end
     end
 
+    if @verbose
+      echo 'Synchronizuji moduly z ostatních webů: '
+      modules.each do |src_dir, modules_array|
+        echo '   z ' + src_dir + ': ' + modules_array.join(', ')
+      end
+    end
     # do sync with modules from other websites
-    p modules
     modules.each do |src_dir, modules_array|
       path = src_dir+'/www/modules'
       # => check existency of module folders
@@ -339,64 +368,92 @@ EOT
   
   def sync (dir, src_root, is_root = false, allowed_files = nil)
     Dir.foreach(src_root + dir) do |file|
-      if file != '.' and file != '..' and (!is_root or file != 'modules') and (!allowed_files or allowed_files.include?(file))
+      if file != '.' and file != '..' and file !~ /~$/ and (!is_root or file != 'modules') and (!allowed_files or allowed_files.include?(file))
+        exists = file_exists?(dir+file)
         if @local
-          if !File.exist?(@dst_dir+dir+file)
-            File.symlink(src_root+dir+file, @dst_dir+dir+file)
+          if !exists
+            file_move(src_root+dir+file, @dst_dir+dir+file)
           end
-        elsif File.file?(src_root+dir+file)
-          # check existency and modification time
-          if !file_exists(dir+file)
-            file_move(dir+file)
-          elsif file_modified(dir+file)
-            puts 'REMOTE-MODIFIED: '+ dir+file
-          elsif File.stat(src_root+dir+file).mtime > @last_date
-            file_move(dir+file)
+        elsif is_dir?(src_root+dir+file)
+          if !exists and !@backward
+            mkdir(@dst_dir+dir+file)
           end
-        else
-          exists_create dir+file
           sync(dir + file + '/', src_root)
+        else
+          if exists and !@backward
+            # src file modification time
+            src_modified = File.stat(src_root+dir+file).mtime > @last_date
+          end
+          if (@backward and exists) or (src_modified and !@forced)
+            dst_modified = dst_modified?(dir+file)  # dst file modification time
+          end
+          if !@backward and (!exists or (src_modified and (!dst_modified or @forced)))
+            file_move(src_root+dir+file, @dst_dir+dir+file)
+          end
+          if dst_modified and (@backward or src_modified)
+            puts 'REMOTE-MODIFIED: '+ dir+file
+          end
         end
       end
     end
   end
 
 
-  def file_exists (file)
-    return @local ? File.exist?(@dst_dir+file) : false
+  def is_dir? (dir)
+    return @ftp ? false : File.directory?(dir)
   end
 
 
-  def file_modified (file)
-    if @local
+  def file_exists? (file)
+    return @ftp ? false : File.exist?(@dst_dir+file)
+  end
+
+
+  def dst_modified? (file)
+    if @local or @deep
       return File.stat(@dst_dir+file).mtime > @last_date
     end
     return false
   end
 
 
-  def file_move (file)
-    puts '--copy--'+file
+  def file_move (src, dst)
+    if @ftp
+      if @verbose
+        puts 'Kopíruji soubor "'+ dst +'".'
+      end
+      puts 'NEIMP move'
+    elsif @local
+      if @verbose
+        puts 'Vytvářím symlink na soubor "'+ dst +'".'
+      end
+      File.symlink(src, dst)
+    else
+      if @verbose
+        puts 'Kopíruji soubor "'+ dst +'".'
+      end
+      FileUtils.cp(src, dst)
+    end
+    @created_files += 1
   end
 
 
   # Returns true when new dir was created
-  def exists_create (dir, src_root)
-    if !@local
-      return err 'nedodelano exists_create pro FTP'
+  def mkdir (dir)
+    if @local
+      return err 'Funkci "Synaum::mkdir" nelze použít v režimu "local".'
+    end
+
+    if @verbose
+      puts 'Vytvářím složku "'+ dir +'".'
     end
     
-    if File.exist?(@dst_dir + dir)
-      echo "DIR existuje "+@dst_dir + dir
+    if @deep
+      Dir.mkdir(dir, 0775)
     else
-      echo "DIR vytvarim... "+@dst_dir + dir
-      if @local
-        File.symlink(src_root + dir, @dst_dir + dir)
-      else
-        Dir.mkdir(@dst_dir + dir, 0775)
-        return err 'NEIMPLEMENTOVANO - vytvareni dir v exists_create'
-      end
+      err 'NEIMPL mkdir'
     end
+    @created_dirs += 1
   end
 
 
@@ -418,10 +475,16 @@ EOT
 
 
   def print_result_message
-    if @error
-      echo 'Synchronizace nebyla provedena.'
+    nochange = ''
+    if @created_files + @created_dirs > 0
+      echo "Bylo synchronizováno #{@created_files} souborů a vytvořeno #{@created_dirs} složek."
     else
-      echo 'Synchronizace proběhla úspěšně'
+      nochange = ' Nebyly provedeny žádné změny.'
+    end
+    if @error
+      err 'Synchronizace nebyla provedena!'
+    else
+      echo 'Synchronizace proběhla úspěšně.' + nochange
     end
   end
 end
