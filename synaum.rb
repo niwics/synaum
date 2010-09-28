@@ -6,6 +6,7 @@ require "fileutils"
 class Synaum
 
   POSSIBLE_PARAMS = ['b', 'd', 'f', 'l', 's']
+  DATE_FORMAT = "%d/%m/%Y, %H:%M:%S (%A)"
 
   @error
   @verbose
@@ -242,12 +243,20 @@ class Synaum
               arr = value.split(', ')
               vals = arr[0].split('/') + arr[1].split(':')
               @last_date = Time.mktime(vals[2], vals[1], vals[0], vals[3], vals[4], vals[5]);
+              last_found = true
             when 'mode' then @last_mode = value
           else
             return err 'Neznámý parametr "'+ name +'" v konfiguračním souboru "'+ sync_filename +'".'
           end
         end
       end
+
+      if last_found
+        echo 'Posledni synchronizace proběhla ' + @last_date.strftime(DATE_FORMAT) + '.'
+      else
+        echo 'Nebyl nalezen soubor s informacemi o poslední synchronizaci.'
+      end
+
       # check modes compatibility
       if @last_mode == 'local' and @deep
         return err 'Minulý režim synchronizace byl "local", tedy s vytvořením symlinků do zdrojové složky. Není proto možné provést synchronizaci "deep". Smažte prosím nejdříve cílovou složku "'+ @dst_dir +'" nebo její obsah.'
@@ -264,7 +273,7 @@ class Synaum
       echo 'Zapisuji do výstupního logu...'
     end
     # write sync data to the sync file
-    now_date = Time.now.strftime("%d/%m/%Y, %H:%M:%S (%a)")
+    now_date = Time.now.strftime(DATE_FORMAT)
     mode = @ftp ? 'ftp' : (@local ? 'local' : 'deep')
     log_msg = <<EOT
 # Log synchronizacniho skriptu Synaum pro system Gorazd
@@ -315,10 +324,10 @@ EOT
       end
     end
 
-    if @verbose
+    if @debug
       echo 'Synchronizuji moduly z ostatních webů: '
       modules.each do |src_dir, modules_array|
-        echo '   z ' + src_dir + ': ' + modules_array.join(', ')
+        puts '   z ' + src_dir + ': ' + modules_array.join(', ')
       end
     end
     # do sync with modules from other websites
@@ -384,13 +393,13 @@ EOT
             # src file modification time
             src_modified = File.stat(src_root+dir+file).mtime > @last_date
           end
-          if (@backward and exists) or (src_modified and !@forced)
+          if exists or (src_modified and !@forced)
             dst_modified = dst_modified?(dir+file)  # dst file modification time
           end
           if !@backward and (!exists or (src_modified and (!dst_modified or @forced)))
             file_move(src_root+dir+file, @dst_dir+dir+file)
           end
-          if dst_modified and (@backward or src_modified)
+          if dst_modified and (@verbose or src_modified)
             puts 'REMOTE-MODIFIED: '+ dir+file
           end
         end
