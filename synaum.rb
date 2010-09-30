@@ -214,7 +214,7 @@ class Synaum
     # do synchronization
     sync_modules
     if !@error
-      sync('/', @src_dir, true)
+      sync('/', @src_dir)
     end
     write_log_file
     return true
@@ -280,9 +280,9 @@ class Synaum
       end
 
       if last_found
-        echo 'Posledni synchronizace proběhla ' + @last_date.strftime(DATE_FORMAT) + '.'
+        real_echo 'Posledni synchronizace proběhla ' + @last_date.strftime(DATE_FORMAT) + '.'
       else
-        echo 'Nebyl nalezen soubor s informacemi o poslední synchronizaci.'
+        real_echo 'Nebyl nalezen soubor s informacemi o poslední synchronizaci.'
       end
 
       # check modes compatibility
@@ -328,7 +328,7 @@ EOT
       if @simulation
         return true
       end
-      mkdir(@dst_dir+'/modules', 0775)
+      mkdir(@dst_dir+'/modules')
     end
 
     # collect info about modules from other websites
@@ -372,10 +372,12 @@ EOT
         echo '   z ' + src_dir + ': ' + modules_array.join(', '), false
       end
     end
+    # do sync with the system root folder (except its "modules", of course)
+    sync('/', system_dir+'/www')
     # do sync with modules from other websites
     modules.each do |src_dir, modules_array|
       path = src_dir+'/www/modules'
-      # => check existency of module folders
+      # check existency of module folders
       modules_array.each do |mod|
         modpath = path+'/'+mod
         if !File.exist?(modpath)
@@ -384,7 +386,7 @@ EOT
           return err 'Zadaný modul "'+ modpath +'" není složka, ale je to soubor.'
         end
       end
-      sync('/modules/', src_dir+'/www', false, modules_array)
+      sync('/modules/', src_dir+'/www', modules_array)
     end
     # do sync with modules from this website
     sync('/modules/', @src_dir)
@@ -417,19 +419,24 @@ EOT
 
 
   
-  def sync (dir, src_root, is_root = false, allowed_files = nil)
+  def sync (dir, src_root, allowed_files = nil)
     files = Dir.entries(src_root + dir)
-    if src_root == @src_dir or dir != '/modules/'
+    # check additional files on the target direcory
+    if src_root == @src_dir or (dir != '/modules/' and dir != '/')
       additional_files = list_remote_files(@dst_dir + dir) - files
       if dir == '/modules/'
         additional_files -= @module_names
+      elsif dir == '/'
+        system_dir = get_website_dir('gorazd-system')
+        additional_files -= Dir.entries(system_dir+'/www')
+        additional_files.delete('synaum-log')
       end
       additional_files.each do |f|
         echo 'SOURCE_MISSING: '+dir+f
       end
     end
     files.each do |file|
-      if file != '.' and file != '..' and file !~ /~$/ and (!is_root or file != 'modules') and (!allowed_files or allowed_files.include?(file))
+      if file != '.' and file != '..' and file !~ /~$/ and (dir != '/' or file != 'modules') and (!allowed_files or allowed_files.include?(file))
         exists = file_exist?(dir+file)
         if @local
           if !exists
@@ -469,8 +476,11 @@ EOT
     if @ftp
       return 'kdovico'
     else
-      return Dir.entries(path)
+      if File.exist?(path)
+        return Dir.entries(path)
+      end
     end
+    return []
   end
 
 
@@ -500,7 +510,7 @@ EOT
       echo 'Kopíruji soubor "'+ dst +'".'
       puts 'NEIMP move'
     elsif @local
-      echo 'Vytvářím symlink na soubor "'+ dst +'".'
+      echo 'Vytvářím symlink na soubor "'+ src +'".'
       File.symlink(src, dst)
     else
       echo 'Kopíruji soubor "'+ dst +'".'
@@ -512,16 +522,12 @@ EOT
 
   # Returns true when new dir was created
   def mkdir (dir)
-    if @local
-      return err 'Funkci "Synaum::mkdir" nelze použít v režimu "local".'
-    end
-
     echo 'Vytvářím složku "'+ dir +'".'
     
-    if @deep
-      Dir.mkdir(dir, 0775)
-    else
+    if @ftp
       err 'NEIMPL mkdir'
+    else
+      Dir.mkdir(dir, 0775)
     end
     @created_dirs += 1
   end
