@@ -5,7 +5,7 @@ require "fileutils"
 
 class Synaum
 
-  POSSIBLE_PARAMS = ['b', 'd', 'f', 'l', 's']
+  POSSIBLE_PARAMS = ['d', 'f', 'l', 's', 't']
   DATE_FORMAT = "%d/%m/%Y, %H:%M:%S (%A)"
 
   @error
@@ -17,9 +17,9 @@ class Synaum
   @params
 
   @mode
-  @backward
   @deep
   @local
+  @simulation
   @forced
 
   @ftp
@@ -39,6 +39,7 @@ class Synaum
   @old_remote_modifieds
   @new_remote_modifieds
 
+  @module_names
   @created_dirs
   @created_files
 
@@ -46,7 +47,11 @@ class Synaum
     # default values
     @verbose = true
     @local_dir = ''
-    @modules = @excluded_modules = @old_remote_modifieds = @new_remote_modifieds = []
+    @modules = []
+    @excluded_modules = []
+    @old_remote_modifieds = []
+    @new_remote_modifieds = []
+    @module_names = []
     @last_date = Time.mktime(1970, 1, 1)
     @created_dirs = @created_files = 0
     parse_params
@@ -84,11 +89,11 @@ class Synaum
       @params = @params[1..-1] #TODO frozen...
       @params.each_char do |i|
         case i
-        when 'b' then @backward = true
         when 'd' then @deep = true
         when 'f' then @forced = true
         when 'l' then @local = true
-        when 's' then @verbose = false
+        when 's' then @simulation = true
+        when 't' then @verbose = false
         else
           err 'Zadán neplatný přepínač: "' + i + '".'
           echo 'Povolené přepínače: "' + POSSIBLE_PARAMS.join('", "') + '".'
@@ -189,8 +194,8 @@ class Synaum
     else
       msg = 'FTP'
     end
-    if @backward
-      msg = msg + ' ZPĚTNÁ'
+    if @simulation
+      msg += ' CVIČNÁ'
     end
     real_echo msg+' synchronizace webu "'+ @website +'"...'
     return true
@@ -251,7 +256,7 @@ class Synaum
     # try to load the sync file with the last modification time
     sync_filename = @dst_dir + '/' + 'synaum-log'
     if File.exist?(sync_filename)
-      @sync_file = File.new(sync_filename, "r+")
+      @sync_file = File.new(sync_filename, "r")
       while line = @sync_file.gets
         line.chomp!
         if line[0,1] != '#' and line != ''
@@ -286,9 +291,8 @@ class Synaum
       elsif @last_mode == 'deep' and @local
         return err 'Minulý režim synchronizace byl "deep", tedy s fyzickým kopírováním souborů do cílové složky. Není proto možné provést synchronizaci "local", která pracuje se symliky. Smažte prosím nejdříve cílovou složku "'+ @dst_dir +'" nebo její obsah.'
       end
-    else
-      @sync_file = File.new(sync_filename, "w")
     end
+    @sync_file = File.new(sync_filename, "w")
     return true
   end
 
@@ -321,7 +325,7 @@ EOT
   def sync_modules
     # create module dir if not exists
     if !File.exist?(@dst_dir+'/modules')
-      if @backward
+      if @simulation
         return true
       end
       mkdir(@dst_dir+'/modules', 0775)
@@ -361,7 +365,10 @@ EOT
 
     if @debug
       echo 'Synchronizuji moduly z ostatních webů: '
-      modules.each do |src_dir, modules_array|
+    end
+    modules.each do |src_dir, modules_array|
+      @module_names += modules_array
+      if @debug
         echo '   z ' + src_dir + ': ' + modules_array.join(', '), false
       end
     end
@@ -409,18 +416,18 @@ EOT
   end
 
 
-  def sync (dir, src_root, is_root = false, allowed_files = nil)
-    if @backward
-      return backward_sync(dir, src_root, is_root, allowed_files)
-    else
-      return normal_sync(dir, src_root, is_root, allowed_files)
-    end
-  end
-
-
   
-  def normal_sync (dir, src_root, is_root = false, allowed_files = nil)
-    files = list_files(src_root + dir)
+  def sync (dir, src_root, is_root = false, allowed_files = nil)
+    files = Dir.entries(src_root + dir)
+    if src_root == @src_dir or dir != '/modules/'
+      additional_files = list_remote_files(@dst_dir + dir) - files
+      if dir == '/modules/'
+        additional_files -= @module_names
+      end
+      additional_files.each do |f|
+        echo 'SOURCE_MISSING: '+dir+f
+      end
+    end
     files.each do |file|
       if file != '.' and file != '..' and file !~ /~$/ and (!is_root or file != 'modules') and (!allowed_files or allowed_files.include?(file))
         exists = file_exist?(dir+file)
@@ -429,26 +436,28 @@ EOT
             file_move(src_root+dir+file, @dst_dir+dir+file)
           end
         elsif is_dir?(src_root+dir+file)
-          if !exists and !@backward
+          if !exists and !@simulation
             mkdir(@dst_dir+dir+file)
           end
-          normal_sync(dir + file + '/', src_root)
+          sync(dir + file + '/', src_root)
         else
-          if exists and !@backward
+          if exists and !@simulation
             # src file modification time
             src_modified = File.stat(src_root+dir+file).mtime > @last_date
           end
           if exists or (src_modified and !@forced)
             dst_modified = dst_modified?(dir+file)  # dst file modification time
           end
-          if !@backward and (!exists or (src_modified and (!dst_modified or @forced)))
-            file_move(src_root+dir+file, @dst_dir+dir+file)
-          end
           if dst_modified
             if @verbose or src_modified
-              echo 'REMOTE-MODIFIED: '+file
+              echo 'REMOTE-MODIFIED: '+dir+file
             end
-            @new_remote_modifieds << dir+file
+            if !@forced
+              @new_remote_modifieds << dir+file
+            end
+          end
+          if !@simulation and (!exists or (src_modified and (!dst_modified or @forced)))
+            file_move(src_root+dir+file, @dst_dir+dir+file)
           end
         end
       end
@@ -456,32 +465,11 @@ EOT
   end
 
 
-
-  def backward_sync (dir, src_root, is_root = false, allowed_files = nil)
-    files = list_files(@dst_dir + dir)
-    files.each do |file|
-      if file != '.' and file != '..' and file !~ /~$/ and (!is_root or file != 'modules') and (!allowed_files or allowed_files.include?(file))
-        if File.exist?(src_root+dir+file)
-          if File.file?(src_root+dir+file)
-            if dst_modified?(dir+file)
-              echo 'REMOTE-MODIFIED: '+file
-            end
-          else
-            backward_sync(dir + file + '/', src_root)
-          end
-        else
-          echo 'SOURCE_MISSING: '+file
-        end
-      end
-    end
-  end
-
-
-  def list_files (path)
-    if !@ftp or !@backward
-      return Dir.entries(path)
-    else
+  def list_remote_files (path)
+    if @ftp
       return 'kdovico'
+    else
+      return Dir.entries(path)
     end
   end
 
@@ -563,7 +551,7 @@ EOT
     if @verbose
       real_echo(message, formatted)
     else
-      log_msg(msg)
+      log_msg(message)
     end
   end
 
