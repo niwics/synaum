@@ -7,6 +7,7 @@ class Synaum
 
   POSSIBLE_PARAMS = ['d', 'f', 'l', 's', 't']
   DATE_FORMAT = "%d/%m/%Y, %H:%M:%S (%A)"
+  SYNC_FILENAME = 'synaum-log'
 
   @error
   @verbose
@@ -17,11 +18,15 @@ class Synaum
   @params
 
   @mode
+  @ftp_servername
   @deep
   @local
   @simulation
   @forced
 
+  # FTP connection (Net::FTP) connector
+  # - also used for bool testing - so it's pre-inited
+  #   to the true in parse_params function
   @ftp
   @ftp_dir
   @username
@@ -30,7 +35,6 @@ class Synaum
   @modules
   @excluded_modules
 
-  @sync_file
   @output_log
   @config_dir
   @dst_dir
@@ -45,13 +49,15 @@ class Synaum
 
   def initialize
     # default values
-    @verbose = true
+    @ftp_mode = true
+    @ftp_dir = ''
     @local_dir = ''
     @modules = []
     @excluded_modules = []
     @old_remote_modifieds = []
     @new_remote_modifieds = []
     @module_names = []
+    @verbose = true
     @last_date = Time.mktime(1970, 1, 1)
     @created_dirs = @created_files = 0
     parse_params
@@ -86,7 +92,7 @@ class Synaum
     end
     # check possible params
     if @params != nil
-      @params = @params[1..-1] #TODO frozen...
+      @params = @params[1..-1] # is frozen...
       @params.each_char do |i|
         case i
         when 'd' then @deep = true
@@ -103,6 +109,9 @@ class Synaum
     else
       @params = ''
     end
+
+    # pre-init ftp value (later will be really inited in ftp_connect function)
+    @ftp = (!@local and !@deep)
     @mode = @ftp ? 'ftp' : (@local ? 'local' : 'deep')
     return true
   end
@@ -172,9 +181,12 @@ class Synaum
       line.chomp!
       if line[0,1] != '#' and line != ''
         name, value = line.split(' ', 2)
+        if !value
+          return err 'Nebyla zadána hodnota u parametru "'+ name +'" v konfiguračním souboru "'+ @src_dir+'/synaum' +'".'
+        end
         case name
-          when 'ftp' then @ftp = value
-          when 'ftp-dir' then @ftp_dir = value
+          when 'ftp' then @ftp_servername = value
+          when 'ftp-dir' then @ftp_dir = value[0..1]=='/' ? value : '/'+value
           when 'username' then @username = value
           when 'password' then @password = value
           when 'local-dir' then @local_dir = value
@@ -183,6 +195,15 @@ class Synaum
         else
           return err 'Neznámý parametr "'+ name +'" v konfiguračním souboru "'+ @src_dir+'/synaum' +'".'
         end
+      end
+    end
+
+    # check params for FTP
+    if !@local and !@deep
+      if !@ftp_servername
+        return err 'Nebyl zadán FTP server pro synchronizaci. Pokud chcete pracovat pouze s lokálními soubory, použijte přepínač -d nebo -l (viz nápověda - "synaum help")'
+      elsif !@username
+        return err 'Nebylo zadáno uživatelské jméno pro připojení k FTP serveru.'
       end
     end
     
@@ -205,12 +226,17 @@ class Synaum
   
   def synchronize
     @src_dir = @src_dir + '/www'
-    @dst_dir = @ftp ? @ftp_dir : @local_dir
-    check_dst_dir or return false
-    load_sync_file or return false
     if @ftp
-      ftp_connect
+      @dst_dir = @ftp_dir
+    else
+      @dst_dir = @local_dir
+      check_dst_dir or return false
     end
+    
+    if @ftp
+      ftp_connect or return false
+    end
+    load_sync_file or return false
     # do synchronization
     sync_modules
     if !@error
@@ -223,12 +249,24 @@ class Synaum
 
   def ftp_connect
     # connect to FTP
-    ftp = Net::FTP.new
-    ftp.connect(server_name)
-    ftp.login(username, password)
-    ftp.chdir(directory)
-    ftp.getbinaryfile(filename)
-    ftp.close
+    @ftp = Net::FTP.new
+    echo("Připojování k FTP serveru \"#{@ftp_servername}\"...", false, false)
+    begin
+      @ftp.connect(@ftp_servername)
+    rescue
+      return err "\n!!! Nepodařilo se připojit k FTP serveru \"#{@ftp_servername}\"."
+    end
+    begin
+      @ftp.login(@username, @password)
+    rescue
+      return err "\n!!! Nepodařilo se přihlásit k FTP \"#{@ftp_servername}\" s uživatelským jménem \"#{@username}\". Zkontrolujte v konfiguračním souboru \"#{@src_dir}/synaum\" nastavení FTP serveru, uživatelského jména a hesla."
+    end
+    echo(' úspěšně připojeno.')
+    
+    if !dst_file_exist?(@ftp_dir, false)
+      return err "Na serveru nebyla nalezena zadaná kořenová složka \"#{@ftp_dir}\". Zkontrolujte existenci této složky a její oprávnění zápisu. Cestu k ní je možné upravit v konfiguračním souboru \"#{@src_dir}/synaum\"."
+    end
+    return true
   end
 
 
@@ -254,11 +292,10 @@ class Synaum
 
   def load_sync_file
     # try to load the sync file with the last modification time
-    sync_filename = @dst_dir + '/' + 'synaum-log'
-    if File.exist?(sync_filename)
-      @sync_file = File.new(sync_filename, "r")
-      while line = @sync_file.gets
+    if dst_file_exist?(SYNC_FILENAME)
+      read_sync_line do |line|
         line.chomp!
+        puts line
         if line[0,1] != '#' and line != ''
           name, value = line.split(' ', 2)
           case name
@@ -273,17 +310,12 @@ class Synaum
             if rems_allowed and line[0,1] == '/'
               @old_remote_modifieds << line
             else
-              return err 'Neznámý parametr "'+ name +'" v konfiguračním souboru "'+ sync_filename +'".'
+              return err 'Neznámý parametr "'+ name +'" v konfiguračním souboru "'+ @dst_dir + '/' + SYNC_FILENAME + '".'
             end
           end
         end
       end
-
-      if last_found
-        real_echo 'Posledni synchronizace proběhla ' + @last_date.strftime(DATE_FORMAT) + '.'
-      else
-        real_echo 'Nebyl nalezen soubor s informacemi o poslední synchronizaci.'
-      end
+      real_echo 'Posledni synchronizace proběhla ' + @last_date.strftime(DATE_FORMAT) + '.'
 
       # check modes compatibility
       if @last_mode == 'local' and @deep
@@ -291,9 +323,26 @@ class Synaum
       elsif @last_mode == 'deep' and @local
         return err 'Minulý režim synchronizace byl "deep", tedy s fyzickým kopírováním souborů do cílové složky. Není proto možné provést synchronizaci "local", která pracuje se symliky. Smažte prosím nejdříve cílovou složku "'+ @dst_dir +'" nebo její obsah.'
       end
+    else
+      real_echo 'Nebyl nalezen soubor s informacemi o poslední synchronizaci.'
     end
-    @sync_file = File.new(sync_filename, "w")
     return true
+  end
+
+
+  def read_sync_line
+    if @ftp
+      while line = sync_file.gets
+        yield line
+      end
+    else
+      if !sync_file
+        sync_file = File.new(@dst_dir + '/' + SYNC_FILENAME, "r")
+      end
+      while line = sync_file.gets
+        yield line
+      end
+    end
   end
 
 
@@ -318,13 +367,21 @@ REMOTE_MODIFIED files in last synchronization:
 #{rems}
 EOT
     end
-    @sync_file.syswrite(log_msg)
+
+    # write file
+    filename = (@ftp ? '/tmp' : @dst_dir) + '/' + SYNC_FILENAME
+    sync_file = File.new(filename, "w")
+    sync_file.syswrite(log_msg)
+    if @ftp
+      # upload the temp file
+      file_move(filename, @dst + '/' + SYNC_FILENAME)
+    end
   end
 
 
   def sync_modules
     # create module dir if not exists
-    if !File.exist?(@dst_dir+'/modules')
+    if !dst_file_exist?('modules')
       if @simulation
         return true
       end
@@ -437,12 +494,12 @@ EOT
     end
     files.each do |file|
       if file != '.' and file != '..' and file !~ /~$/ and (dir != '/' or file != 'modules') and (!allowed_files or allowed_files.include?(file))
-        exists = file_exist?(dir+file)
+        exists = dst_file_exist?(dir+file)
         if @local
           if !exists
             file_move(src_root+dir+file, @dst_dir+dir+file)
           end
-        elsif is_dir?(src_root+dir+file)
+        elsif File.directory?(src_root+dir+file)
           if !exists and !@simulation
             mkdir(@dst_dir+dir+file)
           end
@@ -474,7 +531,11 @@ EOT
 
   def list_remote_files (path)
     if @ftp
-      return 'kdovico'
+      begin
+        @ftp.list(path)
+      rescue
+        err "Chyba při procházení stromem na serveru - \"#{path}\" není složka!"
+      end
     else
       if File.exist?(path)
         return Dir.entries(path)
@@ -484,13 +545,20 @@ EOT
   end
 
 
-  def is_dir? (file)
-    return @ftp ? false : File.directory?(file)
-  end
-
-
-  def file_exist? (file)
-    return @ftp ? false : File.exist?(@dst_dir+file)
+  def dst_file_exist? (path, append_path_prefix = true)
+    path = (append_path_prefix ? @dst_dir+'/' : '') + path
+    if @ftp
+      re = Regexp.new('\s' + File.basename(path) + '$')
+      list = @ftp.list(File.dirname(path))
+      list.each do |line|
+        if line =~ re
+          return true
+        end
+      end
+    else
+      return File.exist?(path)
+    end
+    return false
   end
 
 
@@ -507,13 +575,13 @@ EOT
 
   def file_move (src, dst)
     if @ftp
-      echo 'Kopíruji soubor "'+ dst +'".'
-      puts 'NEIMP move'
+      echo 'Kopíruji soubor "'+ src +'".'
+      @ftp.putbinaryfile(src, dst)
     elsif @local
       echo 'Vytvářím symlink na soubor "'+ src +'".'
       File.symlink(src, dst)
     else
-      echo 'Kopíruji soubor "'+ dst +'".'
+      echo 'Kopíruji soubor "'+ src +'".'
       FileUtils.cp(src, dst)
     end
     @created_files += 1
@@ -525,7 +593,7 @@ EOT
     echo 'Vytvářím složku "'+ dir +'".'
     
     if @ftp
-      err 'NEIMPL mkdir'
+      @ftp.mkdir(dir)
     else
       Dir.mkdir(dir, 0775)
     end
@@ -535,9 +603,24 @@ EOT
 
   def cond_mkdir_local (dir)
     if !File.exist?(dir)
+      echo 'Vytvářím lokální složku "'+ dir +'".'
       Dir.mkdir(dir, 0775)
     end
   end
+
+
+#  def ftp_file_exist? (filename)
+#    if dir
+#      ftp_chdir(dir) or return false
+#    end
+#    cmd = "LIST " + filename
+#    retrlines(cmd) do |line|
+#      if line == 'filename'
+#        return true
+#      end
+#    end
+#    return false
+#  end
 
 
 
@@ -553,25 +636,25 @@ EOT
   end
 
 
-  def echo (message, formatted = true)
+  def echo (message, formatted = true, newline = true)
     if @verbose
-      real_echo(message, formatted)
+      real_echo(message, formatted, newline)
     else
-      log_msg(message)
+      log_msg(message, newline)
     end
   end
 
 
-  def real_echo (message, formatted = true)
+  def real_echo (message, formatted = true, newline = true)
     msg = (formatted ? '> ' :'') + message
-    puts msg
-    log_msg(msg)
+    print msg + (newline ? "\n" : "")
+    log_msg(msg, newline)
   end
 
 
-  def log_msg (msg)
+  def log_msg (msg, newline = true)
     if @output_log
-      @output_log.syswrite(msg+"\n")
+      @output_log.syswrite(msg + (newline ? "\n" : ""))
     end
   end
 
