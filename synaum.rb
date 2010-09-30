@@ -30,11 +30,14 @@ class Synaum
   @modules
   @excluded_modules
 
+  @sync_file
   @output_log
   @config_dir
   @dst_dir
   @last_date
   @last_mode
+  @old_remote_modifieds
+  @new_remote_modifieds
 
   @created_dirs
   @created_files
@@ -43,8 +46,7 @@ class Synaum
     # default values
     @verbose = true
     @local_dir = ''
-    @modules = []
-    @excluded_modules = []
+    @modules = @excluded_modules = @old_remote_modifieds = @new_remote_modifieds = []
     @last_date = Time.mktime(1970, 1, 1)
     @created_dirs = @created_files = 0
     parse_params
@@ -200,7 +202,7 @@ class Synaum
     @src_dir = @src_dir + '/www'
     @dst_dir = @ftp ? @ftp_dir : @local_dir
     check_dst_dir or return false
-    load_log_file or return false
+    load_sync_file or return false
     if @ftp
       ftp_connect
     end
@@ -245,12 +247,12 @@ class Synaum
   end
 
 
-  def load_log_file
+  def load_sync_file
     # try to load the sync file with the last modification time
     sync_filename = @dst_dir + '/' + 'synaum-log'
     if File.exist?(sync_filename)
-      sync_file = File.new(sync_filename, "r+")
-      while line = sync_file.gets
+      @sync_file = File.new(sync_filename, "r+")
+      while line = @sync_file.gets
         line.chomp!
         if line[0,1] != '#' and line != ''
           name, value = line.split(' ', 2)
@@ -261,8 +263,13 @@ class Synaum
               @last_date = Time.mktime(vals[2], vals[1], vals[0], vals[3], vals[4], vals[5]);
               last_found = true
             when 'mode' then @last_mode = value
+            when 'REMOTE_MODIFIED' then rems_allowed = true
           else
-            return err 'Neznámý parametr "'+ name +'" v konfiguračním souboru "'+ sync_filename +'".'
+            if rems_allowed and line[0,1] == '/'
+              @old_remote_modifieds << line
+            else
+              return err 'Neznámý parametr "'+ name +'" v konfiguračním souboru "'+ sync_filename +'".'
+            end
           end
         end
       end
@@ -279,6 +286,8 @@ class Synaum
       elsif @last_mode == 'deep' and @local
         return err 'Minulý režim synchronizace byl "deep", tedy s fyzickým kopírováním souborů do cílové složky. Není proto možné provést synchronizaci "local", která pracuje se symliky. Smažte prosím nejdříve cílovou složku "'+ @dst_dir +'" nebo její obsah.'
       end
+    else
+      @sync_file = File.new(sync_filename, "w")
     end
     return true
   end
@@ -296,14 +305,25 @@ class Synaum
 last-synchronized #{now_date}
 mode #{@mode}
 EOT
-    sync_file = File.new(@dst_dir + '/' + 'synaum-log', "w")
-    sync_file.syswrite(log_msg)
+    if @new_remote_modifieds.count > 0
+      rems= @new_remote_modifieds.join("\n")
+      log_msg += <<EOT
+
+REMOTE_MODIFIED files in last synchronization:
+#---------------------------------------------
+#{rems}
+EOT
+    end
+    @sync_file.syswrite(log_msg)
   end
 
 
   def sync_modules
     # create module dir if not exists
     if !File.exist?(@dst_dir+'/modules')
+      if @backward
+        return true
+      end
       mkdir(@dst_dir+'/modules', 0775)
     end
 
@@ -393,7 +413,7 @@ EOT
   def sync (dir, src_root, is_root = false, allowed_files = nil)
     Dir.foreach(src_root + dir) do |file|
       if file != '.' and file != '..' and file !~ /~$/ and (!is_root or file != 'modules') and (!allowed_files or allowed_files.include?(file))
-        exists = file_exists?(dir+file)
+        exists = file_exist?(dir+file)
         if @local
           if !exists
             file_move(src_root+dir+file, @dst_dir+dir+file)
@@ -414,8 +434,11 @@ EOT
           if !@backward and (!exists or (src_modified and (!dst_modified or @forced)))
             file_move(src_root+dir+file, @dst_dir+dir+file)
           end
-          if dst_modified and (@verbose or src_modified)
-            echo 'REMOTE-MODIFIED: '+ dir+file
+          if dst_modified
+            if @verbose or src_modified
+              echo 'REMOTE-MODIFIED: '+file
+            end
+            @new_remote_modifieds << dir+file
           end
         end
       end
@@ -428,12 +451,18 @@ EOT
   end
 
 
-  def file_exists? (file)
+  def file_exist? (file)
+    if @backward
+      return File.exist?(@src_dir+file)
+    end
     return @ftp ? false : File.exist?(@dst_dir+file)
   end
 
 
   def dst_modified? (file)
+    if @old_remote_modifieds.include?(file)
+      return true
+    end
     if @local or @deep
       return File.stat(@dst_dir+file).mtime > @last_date
     end
