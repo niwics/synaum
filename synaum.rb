@@ -409,9 +409,19 @@ EOT
   end
 
 
-  
   def sync (dir, src_root, is_root = false, allowed_files = nil)
-    Dir.foreach(src_root + dir) do |file|
+    if @backward
+      return backward_sync(dir, src_root, is_root, allowed_files)
+    else
+      return normal_sync(dir, src_root, is_root, allowed_files)
+    end
+  end
+
+
+  
+  def normal_sync (dir, src_root, is_root = false, allowed_files = nil)
+    files = list_files(src_root + dir)
+    files.each do |file|
       if file != '.' and file != '..' and file !~ /~$/ and (!is_root or file != 'modules') and (!allowed_files or allowed_files.include?(file))
         exists = file_exist?(dir+file)
         if @local
@@ -422,7 +432,7 @@ EOT
           if !exists and !@backward
             mkdir(@dst_dir+dir+file)
           end
-          sync(dir + file + '/', src_root)
+          normal_sync(dir + file + '/', src_root)
         else
           if exists and !@backward
             # src file modification time
@@ -446,15 +456,42 @@ EOT
   end
 
 
-  def is_dir? (dir)
-    return @ftp ? false : File.directory?(dir)
+
+  def backward_sync (dir, src_root, is_root = false, allowed_files = nil)
+    files = list_files(@dst_dir + dir)
+    files.each do |file|
+      if file != '.' and file != '..' and file !~ /~$/ and (!is_root or file != 'modules') and (!allowed_files or allowed_files.include?(file))
+        if File.exist?(src_root+dir+file)
+          if File.file?(src_root+dir+file)
+            if dst_modified?(dir+file)
+              echo 'REMOTE-MODIFIED: '+file
+            end
+          else
+            backward_sync(dir + file + '/', src_root)
+          end
+        else
+          echo 'SOURCE_MISSING: '+file
+        end
+      end
+    end
+  end
+
+
+  def list_files (path)
+    if !@ftp or !@backward
+      return Dir.entries(path)
+    else
+      return 'kdovico'
+    end
+  end
+
+
+  def is_dir? (file)
+    return @ftp ? false : File.directory?(file)
   end
 
 
   def file_exist? (file)
-    if @backward
-      return File.exist?(@src_dir+file)
-    end
     return @ftp ? false : File.exist?(@dst_dir+file)
   end
 
