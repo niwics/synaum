@@ -238,7 +238,7 @@ class Synaum
     end
     load_sync_file or return false
     # do synchronization
-    sync_modules
+    #sync_modules
     if !@error
       sync('/', @src_dir)
     end
@@ -469,9 +469,10 @@ EOT
       puts '...SYNC: ' + src_root + dir
     end
     files = Dir.entries(src_root + dir)
+    remote_files = list_remote_files(@dst_dir + dir)
     # check additional files on the target direcory
     if src_root == @src_dir or (dir != '/modules/' and dir != '/')
-      additional_files = list_remote_files(@dst_dir + dir) - files
+      additional_files = remote_files - files
       if dir == '/modules/'
         additional_files -= @module_names
       elsif dir == '/'
@@ -484,8 +485,11 @@ EOT
       end
     end
     files.each do |file|
-      if file != '.' and file != '..' and file !~ /~$/ and (dir != '/' or file != 'modules') and (!allowed_files or allowed_files.include?(file))
-        exists = dst_file_exist?(dir+file)
+      if file != '.' and file != '..' and file !~ /~$/ and (dir != '/' or file != 'modules' or file != 'config-local.php') and (!allowed_files or allowed_files.include?(file))
+        exists = remote_files.include?(file)
+        if @ftp or @debug
+          echo '...kontrola souboru "' + src_root + dir + '/' + file+'"...'
+        end
         if @local
           if !exists
             file_move(src_root+dir+file, @dst_dir+dir+file)
@@ -522,10 +526,16 @@ EOT
 
   def list_remote_files (path)
     if @ftp
+      list = []
       begin
-        @ftp.list(path)
+        files = @ftp.nlst(path)
+        files.each do |files|
+          list << File.basename(files)
+        end
       rescue
         err "Chyba při procházení stromem na serveru - \"#{path}\" není složka!"
+      ensure
+        return list
       end
     else
       if File.exist?(path)
