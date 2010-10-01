@@ -293,9 +293,13 @@ class Synaum
   def load_sync_file
     # try to load the sync file with the last modification time
     if dst_file_exist?(SYNC_FILENAME)
-      read_sync_line do |line|
+      if @ftp
+        # download the remote file
+        @ftp.getbinaryfile(@dst_dir+'/'+SYNC_FILENAME, '/tmp/'+SYNC_FILENAME)
+      end
+        sync_file = File.new((@ftp ? '/tmp' : @dst_dir) + '/' + SYNC_FILENAME, "r")
+      while line = sync_file.gets
         line.chomp!
-        puts line
         if line[0,1] != '#' and line != ''
           name, value = line.split(' ', 2)
           case name
@@ -330,22 +334,6 @@ class Synaum
   end
 
 
-  def read_sync_line
-    if @ftp
-      while line = sync_file.gets
-        yield line
-      end
-    else
-      if !sync_file
-        sync_file = File.new(@dst_dir + '/' + SYNC_FILENAME, "r")
-      end
-      while line = sync_file.gets
-        yield line
-      end
-    end
-  end
-
-
   def write_log_file
     if @debug
       echo 'Zapisuji do výstupního logu...'
@@ -374,7 +362,7 @@ EOT
     sync_file.syswrite(log_msg)
     if @ftp
       # upload the temp file
-      file_move(filename, @dst + '/' + SYNC_FILENAME)
+      file_move(filename, @dst_dir + '/' + SYNC_FILENAME)
     end
   end
 
@@ -477,6 +465,9 @@ EOT
 
   
   def sync (dir, src_root, allowed_files = nil)
+    if @debug
+      puts '...SYNC: ' + src_root + dir
+    end
     files = Dir.entries(src_root + dir)
     # check additional files on the target direcory
     if src_root == @src_dir or (dir != '/modules/' and dir != '/')
