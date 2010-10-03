@@ -1,6 +1,7 @@
 #!/usr/bin/ruby
 # author Miroslav Kvasnica - niwi (miradrda@volny.cz), niwi.cz
 require 'net/ftp'
+require 'net/http'
 require "fileutils"
 
 class Synaum
@@ -8,6 +9,7 @@ class Synaum
   POSSIBLE_PARAMS = ['d', 'f', 'l', 's', 't']
   DATE_FORMAT = "%d/%m/%Y, %H:%M:%S (%A)"
   SYNC_FILENAME = 'synaum-log'
+  SYNC_FILES_LIST_NAME = 'synaum-list.txt'
 
   @error
   @verbose
@@ -18,7 +20,6 @@ class Synaum
   @params
 
   @mode
-  @ftp_servername
   @deep
   @local
   @simulation
@@ -28,9 +29,11 @@ class Synaum
   # - also used for bool testing - so it's pre-inited
   #   to the true in parse_params function
   @ftp
+  @ftp_servername
   @ftp_dir
   @username
   @password
+  @http_servername
   @local_dir
   @modules
   @excluded_modules
@@ -44,6 +47,7 @@ class Synaum
   @new_remote_modifieds
 
   @module_names
+  @ftp_remote_list
   @created_dirs
   @created_files
 
@@ -57,6 +61,7 @@ class Synaum
     @old_remote_modifieds = []
     @new_remote_modifieds = []
     @module_names = []
+    @ftp_remote_list = {}
     @verbose = true
     @last_date = Time.mktime(1970, 1, 1)
     @created_dirs = @created_files = 0
@@ -151,7 +156,7 @@ class Synaum
           return err "Možné zadání cesty ke složce:\n - jako parametr skriptu (např. /work/my-website)\n - v parametru jen název složky např. my-website)\n     - a tato složka musí být umístěna vedle složky se tímto Synaum skriptem\n     - NEBO cesta musí být zadána v souboru config umístěném vedl tohoto Synaum skriptu."
         else
           # load value from config file
-          config_file = File.open("config")
+          config_file = File.open(File.dirname(__FILE__)+"/config")
           while line = config_file.gets
             line.chomp!
             if line[0,1] != '#'
@@ -189,6 +194,7 @@ class Synaum
           when 'ftp-dir' then @ftp_dir = value[0..1]=='/' ? value : '/'+value
           when 'username' then @username = value
           when 'password' then @password = value
+          when 'http-servername' then @http_servername = value
           when 'local-dir' then @local_dir = value
           when 'modules' then @modules = value.split(' ')
           when 'excluded-modules' then @excluded_modules = value.split(' ')
@@ -205,6 +211,10 @@ class Synaum
       elsif !@username
         return err 'Nebylo zadáno uživatelské jméno pro připojení k FTP serveru.'
       end
+    end
+
+    if !@http_servername
+      @http_servername = @ftp_servername
     end
     
     # info message
@@ -234,7 +244,7 @@ class Synaum
     end
     
     if @ftp
-      ftp_connect or return false
+      ftp_prepare or return false
     end
     load_sync_file or return false
     # do synchronization
@@ -247,7 +257,7 @@ class Synaum
   end
 
 
-  def ftp_connect
+  def ftp_prepare
     # connect to FTP
     @ftp = Net::FTP.new
     echo("Připojování k FTP serveru \"#{@ftp_servername}\"...", false, false)
@@ -266,6 +276,36 @@ class Synaum
     if !dst_file_exist?(@ftp_dir, false)
       return err "Na serveru nebyla nalezena zadaná kořenová složka \"#{@ftp_dir}\". Zkontrolujte existenci této složky a její oprávnění zápisu. Cestu k ní je možné upravit v konfiguračním souboru \"#{@src_dir}/synaum\"."
     end
+
+    # call remote ajax PHP script and load directories list
+    ajax_name = '/ajax/system/synaum-list-files.php'
+    begin
+      http = Net::HTTP.new(@http_servername)
+    rescue
+      return err "Nepodařilo se vytvořit HTTP připojení se serverem #{@http_servername}. Zkontrolujte adresu serveru (automaticky je shodná s FTP adresou, ale můžete ji také upravit v konfiguračním souboru \"#{@src_dir}/synaum\"."
+    end
+    begin
+      res = http.get(ajax_name)
+    rescue
+      return err "Nepodařilo se načíst AJAXový PHP skript \"#{@http_servername}#{ajax_name}\"."
+    end
+    if res.body != '1'
+      return err "Neúspěšné volání AJAXového PHP skriptu - skript \"#{@http_servername}#{ajax_name}\" nevrátil hodnotu \"1\"."
+    end
+    if !dst_file_exist?(SYNC_FILES_LIST_NAME)
+      return err "Nepodařilo se najít vzdálený soubor \"#{@dst_dir}/#{SYNC_FILES_LIST_NAME}\"."
+    end
+    # load data
+    @ftp.getbinaryfile(@dst_dir+'/'+SYNC_FILES_LIST_NAME, '/tmp/'+SYNC_FILES_LIST_NAME)
+    lists_file = File.new('/tmp/' + SYNC_FILES_LIST_NAME, "r")
+    while line = lists_file.gets
+      line.chomp!
+      if line[0,1] != '#' and line != ''
+        name, value = line.split("\t", 2)
+        @ftp_remote_list[@ftp_dir+name] = value
+      end
+    end
+    File.delete('/tmp/'+SYNC_FILES_LIST_NAME)
     return true
   end
 
@@ -297,7 +337,7 @@ class Synaum
         # download the remote file
         @ftp.getbinaryfile(@dst_dir+'/'+SYNC_FILENAME, '/tmp/'+SYNC_FILENAME)
       end
-        sync_file = File.new((@ftp ? '/tmp' : @dst_dir) + '/' + SYNC_FILENAME, "r")
+      sync_file = File.new((@ftp ? '/tmp' : @dst_dir) + '/' + SYNC_FILENAME, "r")
       while line = sync_file.gets
         line.chomp!
         if line[0,1] != '#' and line != ''
@@ -306,7 +346,7 @@ class Synaum
             when 'last-synchronized' then
               arr = value.split(', ')
               vals = arr[0].split('/') + arr[1].split(':')
-              @last_date = Time.mktime(vals[2], vals[1], vals[0], vals[3], vals[4], vals[5]);
+              @last_date = Time.mktime(vals[2], vals[1], vals[0], vals[3], vals[4], vals[5])
               last_found = true
             when 'mode' then @last_mode = value
             when 'REMOTE_MODIFIED' then rems_allowed = true
@@ -319,7 +359,11 @@ class Synaum
           end
         end
       end
-      real_echo 'Posledni synchronizace proběhla ' + @last_date.strftime(DATE_FORMAT) + '.'
+      # delete tmp file
+      if @ftp
+        File.delete('/tmp/'+SYNC_FILENAME)
+      end
+      real_echo 'Poslední synchronizace proběhla ' + @last_date.strftime(DATE_FORMAT) + '.'
 
       # check modes compatibility
       if @last_mode == 'local' and @deep
@@ -362,7 +406,11 @@ EOT
     sync_file.syswrite(log_msg)
     if @ftp
       # upload the temp file
-      file_move(filename, @dst_dir + '/' + SYNC_FILENAME)
+      file_move(filename, @dst_dir + '/' + SYNC_FILENAME, true)
+      # delete tmp file
+      if @ftp
+        File.delete('/tmp/'+SYNC_FILENAME)
+      end
     end
   end
 
@@ -472,22 +520,23 @@ EOT
     remote_files = list_remote_files(@dst_dir + dir)
     # check additional files on the target direcory
     if src_root == @src_dir or (dir != '/modules/' and dir != '/')
-      additional_files = remote_files - files
+      additional_files = remote_files.keys - files
       if dir == '/modules/'
         additional_files -= @module_names
       elsif dir == '/'
         system_dir = get_website_dir('gorazd-system')
         additional_files -= Dir.entries(system_dir+'/www')
         additional_files.delete('synaum-log')
+        additional_files.delete('synaum-list.txt')
       end
       additional_files.each do |f|
         echo 'SOURCE_MISSING: '+dir+f
       end
     end
     files.each do |file|
-      if file != '.' and file != '..' and file !~ /~$/ and (dir != '/' or file != 'modules' or file != 'config-local.php') and (!allowed_files or allowed_files.include?(file))
-        exists = remote_files.include?(file)
-        if @ftp or @debug
+      if file != '.' and file != '..' and file !~ /~$/ and (dir != '/' or (file != 'modules' and file != 'config-local.php')) and (!allowed_files or allowed_files.include?(file))
+        exists = remote_files.key?(file)
+        if @debug
           echo '...kontrola souboru "' + src_root + dir + '/' + file+'"...'
         end
         if @local
@@ -525,24 +574,25 @@ EOT
 
 
   def list_remote_files (path)
+    list = {}
     if @ftp
-      list = []
       begin
-        files = @ftp.nlst(path)
-        files.each do |files|
-          list << File.basename(files)
+        # split appropriate fiels string
+        files = @ftp_remote_list[path].split("\t")
+        files.each do |line|
+          file, date = line.split("//")
+          list[file] = date
         end
-      rescue
-        err "Chyba při procházení stromem na serveru - \"#{path}\" není složka!"
-      ensure
-        return list
+#      rescue
+#        err "Chyba při procházení stromem na serveru - \"#{path}\" není složka!"
       end
     else
       if File.exist?(path)
-        return Dir.entries(path)
+        list = Hash[Dir.entries(path).map {|x| [x, nil]}]
       end
     end
-    return []
+    #p list
+    return list
   end
 
 
@@ -574,18 +624,20 @@ EOT
   end
 
 
-  def file_move (src, dst)
+  def file_move (src, dst, control_file = false)
+    if !control_file or @debud
+      echo (@ftp ? 'Kopíruji' : 'Vytvářím symlink na') + ' soubor "'+ src +'".'
+    end
     if @ftp
-      echo 'Kopíruji soubor "'+ src +'".'
       @ftp.putbinaryfile(src, dst)
     elsif @local
-      echo 'Vytvářím symlink na soubor "'+ src +'".'
       File.symlink(src, dst)
     else
-      echo 'Kopíruji soubor "'+ src +'".'
       FileUtils.cp(src, dst)
     end
-    @created_files += 1
+    if !control_file
+      @created_files += 1
+    end
   end
 
 
