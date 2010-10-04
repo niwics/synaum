@@ -10,10 +10,13 @@ class Synaum
   DATE_FORMAT = "%d/%m/%Y, %H:%M:%S (%A)"
   SYNC_FILENAME = 'synaum-log'
   SYNC_FILES_LIST_NAME = 'synaum-list.txt'
+  SRC_IGNORED_FILES = ['/modules', '/config-local.php']
+  DST_IGNORED_FILES = ['synaum-log', 'synaum-list.txt']
 
   @error
   @verbose
   @debug
+  @ignore_libraries
 
   @website
   @src_dir
@@ -37,6 +40,7 @@ class Synaum
   @local_dir
   @modules
   @excluded_modules
+  @src_ignored_files
 
   @output_log
   @config_dir
@@ -50,6 +54,7 @@ class Synaum
   @ftp_remote_list
   @created_dirs
   @created_files
+  @remote_modif_info
 
   def initialize
     # default values
@@ -58,13 +63,15 @@ class Synaum
     @local_dir = ''
     @modules = []
     @excluded_modules = []
+    @src_ignored_files = SRC_IGNORED_FILES
     @old_remote_modifieds = []
     @new_remote_modifieds = []
     @module_names = []
     @ftp_remote_list = {}
     @verbose = true
-    @last_date = Time.mktime(1970, 1, 1)
+    @last_date = Time.gm(1970, 1, 1)  # gm for global time
     @created_dirs = @created_files = 0
+    @ignore_libraries = true
     parse_params
     if !@error
       open_output_log
@@ -198,6 +205,7 @@ class Synaum
           when 'local-dir' then @local_dir = value
           when 'modules' then @modules = value.split(' ')
           when 'excluded-modules' then @excluded_modules = value.split(' ')
+          when 'ignored-files' then @src_ignored_files += value.split(' ')
         else
           return err 'Neznámý parametr "'+ name +'" v konfiguračním souboru "'+ @src_dir+'/synaum' +'".'
         end
@@ -216,7 +224,9 @@ class Synaum
     if !@http_servername
       @http_servername = @ftp_servername
     end
-    
+    # add initial slashes
+    @src_ignored_files = @src_ignored_files.map {|item|  (item[0..0] == '/' ? item : '/'+item)}
+
     # info message
     if @local
       msg = 'Lokální'
@@ -247,8 +257,11 @@ class Synaum
       ftp_prepare or return false
     end
     load_sync_file or return false
+    if @ftp
+      load_ftp_list or return false
+    end
     # do synchronization
-    #sync_modules
+    sync_modules
     if !@error
       sync('/', @src_dir)
     end
@@ -276,36 +289,6 @@ class Synaum
     if !dst_file_exist?(@ftp_dir, false)
       return err "Na serveru nebyla nalezena zadaná kořenová složka \"#{@ftp_dir}\". Zkontrolujte existenci této složky a její oprávnění zápisu. Cestu k ní je možné upravit v konfiguračním souboru \"#{@src_dir}/synaum\"."
     end
-
-    # call remote ajax PHP script and load directories list
-    ajax_name = '/ajax/system/synaum-list-files.php'
-    begin
-      http = Net::HTTP.new(@http_servername)
-    rescue
-      return err "Nepodařilo se vytvořit HTTP připojení se serverem #{@http_servername}. Zkontrolujte adresu serveru (automaticky je shodná s FTP adresou, ale můžete ji také upravit v konfiguračním souboru \"#{@src_dir}/synaum\"."
-    end
-    begin
-      res = http.get(ajax_name)
-    rescue
-      return err "Nepodařilo se načíst AJAXový PHP skript \"#{@http_servername}#{ajax_name}\"."
-    end
-    if res.body != '1'
-      return err "Neúspěšné volání AJAXového PHP skriptu - skript \"#{@http_servername}#{ajax_name}\" nevrátil hodnotu \"1\"."
-    end
-    if !dst_file_exist?(SYNC_FILES_LIST_NAME)
-      return err "Nepodařilo se najít vzdálený soubor \"#{@dst_dir}/#{SYNC_FILES_LIST_NAME}\"."
-    end
-    # load data
-    @ftp.getbinaryfile(@dst_dir+'/'+SYNC_FILES_LIST_NAME, '/tmp/'+SYNC_FILES_LIST_NAME)
-    lists_file = File.new('/tmp/' + SYNC_FILES_LIST_NAME, "r")
-    while line = lists_file.gets
-      line.chomp!
-      if line[0,1] != '#' and line != ''
-        name, value = line.split("\t", 2)
-        @ftp_remote_list[@ftp_dir+name] = value
-      end
-    end
-    File.delete('/tmp/'+SYNC_FILES_LIST_NAME)
     return true
   end
 
@@ -337,16 +320,24 @@ class Synaum
         # download the remote file
         @ftp.getbinaryfile(@dst_dir+'/'+SYNC_FILENAME, '/tmp/'+SYNC_FILENAME)
       end
+      rems_allowed = false
       sync_file = File.new((@ftp ? '/tmp' : @dst_dir) + '/' + SYNC_FILENAME, "r")
       while line = sync_file.gets
         line.chomp!
         if line[0,1] != '#' and line != ''
           name, value = line.split(' ', 2)
+          if !value and !rems_allowed
+            return err "Nebyla zadána hodnota u proměnné \"#{name}\" v konfiguračním souboru \"#{@dst_dir}/#{SYNC_FILENAME}\"."
+          end
           case name
             when 'last-synchronized' then
               arr = value.split(', ')
-              vals = arr[0].split('/') + arr[1].split(':')
-              @last_date = Time.mktime(vals[2], vals[1], vals[0], vals[3], vals[4], vals[5])
+              begin
+                vals = arr[0].split('/') + arr[1].split(':')
+                @last_date = Time.mktime(vals[2], vals[1], vals[0], vals[3], vals[4], vals[5])
+              rescue
+                echo "Nepodařilo se načíst datum poslední synchronizace (hodnota \"#{value}\") z konfiguračního souboru \"#{@dst_dir}/#{SYNC_FILENAME}\"."
+              end
               last_found = true
             when 'mode' then @last_mode = value
             when 'REMOTE_MODIFIED' then rems_allowed = true
@@ -412,6 +403,43 @@ EOT
         File.delete('/tmp/'+SYNC_FILENAME)
       end
     end
+  end
+
+
+  def load_ftp_list
+    # call remote ajax PHP script and load directories list
+    ajax_name = '/ajax/system/synaum-list-files.php?last_sync='+@last_date.to_i.to_s
+    if @debug
+      echo "Generuji vzdálený soubor pomocí PHP skriptu \"#{ajax_name}\"."
+    end
+    begin
+      http = Net::HTTP.new(@http_servername)
+    rescue
+      return err "Nepodařilo se vytvořit HTTP připojení se serverem #{@http_servername}. Zkontrolujte adresu serveru (automaticky je shodná s FTP adresou, ale můžete ji také upravit v konfiguračním souboru \"#{@src_dir}/synaum\"."
+    end
+    begin
+      res = http.get(ajax_name)
+    rescue
+      return err "Nepodařilo se načíst AJAXový PHP skript \"#{@http_servername}#{ajax_name}\"."
+    end
+    if res.body != '1'
+      return err "Neúspěšné volání AJAXového PHP skriptu - skript \"#{@http_servername}#{ajax_name}\" nevrátil hodnotu \"1\"."
+    end
+    if !dst_file_exist?(SYNC_FILES_LIST_NAME)
+      return err "Nepodařilo se najít vzdálený soubor \"#{@dst_dir}/#{SYNC_FILES_LIST_NAME}\"."
+    end
+    # load data
+    @ftp.getbinaryfile(@dst_dir+'/'+SYNC_FILES_LIST_NAME, '/tmp/'+SYNC_FILES_LIST_NAME)
+    lists_file = File.new('/tmp/' + SYNC_FILES_LIST_NAME, "r")
+    while line = lists_file.gets
+      line.chomp!
+      if line[0,1] != '#' and line != ''
+        name, value = line.split("\t", 2)
+        @ftp_remote_list[@ftp_dir+name] = value
+      end
+    end
+    File.delete('/tmp/'+SYNC_FILES_LIST_NAME)
+    return true
   end
 
 
@@ -526,18 +554,20 @@ EOT
       elsif dir == '/'
         system_dir = get_website_dir('gorazd-system')
         additional_files -= Dir.entries(system_dir+'/www')
-        additional_files.delete('synaum-log')
-        additional_files.delete('synaum-list.txt')
+        additional_files -= DST_IGNORED_FILES
       end
       additional_files.each do |f|
         echo 'SOURCE_MISSING: '+dir+f
       end
     end
     files.each do |file|
-      if file != '.' and file != '..' and file !~ /~$/ and (dir != '/' or (file != 'modules' and file != 'config-local.php')) and (!allowed_files or allowed_files.include?(file))
+      if file != '.' and file != '..' and\
+          file !~ /~$/ and (!@ignore_libraries or file != 'libraries' or dir !~ /.*\/modules\/[^\/]+\/$/) and\
+          !@src_ignored_files.include?(dir+file)\
+          and (!allowed_files or allowed_files.include?(file))
         exists = remote_files.key?(file)
         if @debug
-          echo '...kontrola souboru "' + src_root + dir + '/' + file+'"...'
+          echo '...kontrola souboru "' + src_root + dir + file+'"...'
         end
         if @local
           if !exists
@@ -553,19 +583,21 @@ EOT
             # src file modification time
             src_modified = File.stat(src_root+dir+file).mtime > @last_date
           end
-          if exists or (src_modified and !@forced)
-            dst_modified = dst_modified?(dir+file)  # dst file modification time
+          if exists
+            dst_modified = dst_modified?(dir+file, remote_files[file])  # dst file modification time
           end
           if dst_modified
-            if @verbose or src_modified
+            if @verbose
               echo 'REMOTE-MODIFIED: '+dir+file
             end
             if !@forced
               @new_remote_modifieds << dir+file
             end
           end
-          if !@simulation and (!exists or (src_modified and (!dst_modified or @forced)))
+          if !@simulation and (!exists or (src_modified and !dst_modified) or (dst_modified and @forced))
             file_move(src_root+dir+file, @dst_dir+dir+file)
+          elsif dst_modified
+            @remote_modif_info = true
           end
         end
       end
@@ -577,14 +609,17 @@ EOT
     list = {}
     if @ftp
       begin
+        if !@ftp_remote_list[path]
+          return list
+        end
         # split appropriate fiels string
         files = @ftp_remote_list[path].split("\t")
         files.each do |line|
           file, date = line.split("//")
           list[file] = date
         end
-#      rescue
-#        err "Chyba při procházení stromem na serveru - \"#{path}\" není složka!"
+      rescue
+        err "Chyba při procházení stromem na serveru - \"#{path}\" není složka!"
       end
     else
       if File.exist?(path)
@@ -613,19 +648,21 @@ EOT
   end
 
 
-  def dst_modified? (file)
+  def dst_modified? (file, remote_flag = nil)
     if @old_remote_modifieds.include?(file)
       return true
     end
     if @local or @deep
       return File.stat(@dst_dir+file).mtime > @last_date
+    else
+      return remote_flag
     end
     return false
   end
 
 
   def file_move (src, dst, control_file = false)
-    if !control_file or @debud
+    if !control_file or @debug
       echo (@ftp ? 'Kopíruji' : 'Vytvářím symlink na') + ' soubor "'+ src +'".'
     end
     if @ftp
@@ -718,6 +755,9 @@ EOT
       real_echo "Bylo synchronizováno #{@created_files} souborů a vytvořeno #{@created_dirs} složek."
     else
       nochange = ' Nebyly provedeny žádné změny.'
+    end
+    if @remote_modif_info
+      echo 'Některé soubory byly na serveru změněny (REMOTE-MODIFIED), avšak zůstaly na serveru ve své původní podobě. Pokud je chcete přepsat soubory ze zdrojového počítače, použijte přepínač "-f".'
     end
     if @error
       err 'Synchronizace nebyla provedena!'
