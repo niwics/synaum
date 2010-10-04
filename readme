@@ -1,17 +1,71 @@
-Módy programu Synaum:
----------------------
+Nápověda k programu Synaum
+--------------------------
+Synaum je synchronizační skript pro systém Gorazd, podrobnosti najdete na webu http://gorazd.niwi.cz.
+Slouží k aktualizaci webu oproti zdrojové složce na lokálním počítači.
+Spuštění programu:
+	synaum.rb nazev-webu [-dfghlst]
+nebo s obrácenými parametry:
+	synaum.rb [-dfghlst] nazev-webu
 
--b Backward sync (zpětná synchronizace)
-  Kontrolují se pouze soubory na FTP. Program vypíše všechny, které byly změněny od poslední synchronizace.
-  Pouze pro FTP režim.
+Povolené parametry programu:
+	-d	Deep mode	- lokální synchronizace s vytvořením fyzické kopie souborů
+	-f	Force		- aktualizuje cílové soubory i pokud jsou v cíli modifikovány
+	-g	debuG		- vypisuje ladicí hlášky
+	-h	Help		- zobrazí tuto nápovědu k programu
+	-l	Local mode	- lokální synchronizace s využitím symlinků z cíle do zdroje
+	-s	Simulation	- provede jen informativní výpis a kontrolu, ale nekopíruje soubory
+	-t	silenT		- program nebude vypisovat informace o provádené činnosti
+
+Zdrojová složka webu může být zadána jako "nazev-webu" - v takovém případě
+ se skript pokusí najít tento web v rodičovské složce skriptu a v případě
+ neúspěchu pak ve složce zadané v konfiguračním souboru "config" ve složce skriptu.
+K zadání zdrojové složky stačí zadat jen počáteční unikátní písmena a skript
+ se pokusí složu najít sám.
+Také může být zadána i s absolutní cestou ke složce - např. "/devel/my-web".
+
+
+Módy skriptu:
+-------------
+(default) FTP (synchronizace FTP)
+  Provádí se synchronizace na FTP server.
 
 -d Local deep sync (lokální synchronizace - "deep" (hluboká) kopie souborů)
   Provádí se synchronizace na lokální server.
   Do cílové složky jsou přímo kopírovány všechny soubory - narozdílod módu "l",
    kdy se jen vytváří symlinky.
+  Tento režim je tedy vhodný pro lokální vývoj v případě, že chceme provést
+   fork webu a zmrazit jeho aktualizace (například pro testování).
 
 -l Local sync (lokální synchronizace)
   Provádí se synchronizace na lokální server.
   V cílové složce jsou pouze vytvářeny symlinky do zdrojové složky, což je
    výhodné pro vývoj webu - není třeba synchronizovat při každé změně soburů.
-  V tomto režimu není možné použít zpětnou synchronizaci (-b)
+
+
+Princip programu
+----------------
+1. Program zkontroluje zdrojovou složku zadanou třemi způsoby (viz výše)
+2. Načte ze zdrojové složky soubor Synaum s nastavením pro synchronizaci
+3. Pokusí se načíst z cílové složky soubor synaum-log s informacemi
+    o poslední synchronizaci
+4. V případě FTP zavolá skript http://muj-web/ajax/system/synaum-list-files.php.
+    Tento PHP skript uloží do rootu webu do souboru synaum-list.txt strukturu
+    adresářů na serveru včetně infromace o souborech vzdáleně modifikovaných
+    (tzn. změněných na serveru od doby poslední synchronizace).
+5. Skript postupně prochází celou adresářovou strukturu zdrojové složky a také
+    všech modulů specifikovaných v nastavení webu:
+ 5.1  Vypíše všechny soubory, které byly v cílové složce od poslední synchronizace
+       změněny (označeny REMOTE_MODIFIED)
+ 5.2  Vypíše také všechny soubory, které jsou ve složce cílové, ale chybí
+       ve zdrojové (označeny SOURCE_MISSING)
+ 5.3  Soubory změněné ve zdrojové složce aktualizuje v cílové složce v případě,
+       že v cílové nebyly od poslední synchronizace změněny nebo pokud je zadán
+       parametr "f" (force)
+6. Po úspěšné synchronizaci skript uloží informace o jejím průběhu zpátky
+    do souboru synaum-log
+
+
+Povinné položky ve konfiguračním souboru Synaum ve zdrojové složce
+------------------------------------------------------------------
+režim FTP: ftp, username, password
+režimy deep a local: local-dir

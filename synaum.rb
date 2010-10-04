@@ -6,12 +6,13 @@ require "fileutils"
 
 class Synaum
 
-  POSSIBLE_PARAMS = ['d', 'f', 'l', 's', 't']
+  POSSIBLE_PARAMS = ['d', 'f', 'g', 'h', 'l', 's', 't']
   DATE_FORMAT = "%d/%m/%Y, %H:%M:%S (%A)"
   SYNC_FILENAME = 'synaum-log'
   SYNC_FILES_LIST_NAME = 'synaum-list.txt'
   SRC_IGNORED_FILES = ['/modules', '/config-local.php']
   DST_IGNORED_FILES = ['synaum-log', 'synaum-list.txt']
+  HELP_NAMES = ['help', '-help', '-h', '--help', '--h']
 
   @error
   @verbose
@@ -91,12 +92,16 @@ class Synaum
     param1 = ARGV.shift
     if !param1
       return err 'Nebyl zadán název webu pro synchronizaci.'
+    elsif HELP_NAMES.include?param1
+      print_help_and_exit
     end
     if param1[0,1] == '-'
       @params = param1
       @website = ARGV.shift
       if !@website
         return err 'Nebyl zadán název webu pro synchronizaci.'
+      elsif HELP_NAMES.include?@website
+        print_help_and_exit
       end
     else
       @website = param1
@@ -109,6 +114,8 @@ class Synaum
         case i
         when 'd' then @deep = true
         when 'f' then @forced = true
+        when 'g' then @debug = true
+        when 'h' then print_help_and_exit
         when 'l' then @local = true
         when 's' then @simulation = true
         when 't' then @verbose = false
@@ -764,6 +771,35 @@ EOT
     else
       real_echo 'Synchronizace proběhla úspěšně.' + nochange
     end
+  end
+
+
+  def print_help_and_exit
+    puts <<EOT
+----------------------------
+ Nápověda k programu Synaum
+----------------------------
+Synaum je synchronizační skript pro systém Gorazd, podrobnosti najdete na webu http://gorazd.niwi.cz.
+Slouží k aktualizaci webu oproti zdrojové složce na lokálním počítači.
+> Spuštění programu:
+\tsynaum.rb nazev-webu [-#{POSSIBLE_PARAMS.join()}]
+nebo s obrácenými parametry:
+\tsynaum.rb [-#{POSSIBLE_PARAMS.join()}] nazev-webu
+
+Povolené parametry programu:
+\t-d\tDeep mode\t- lokální synchronizace s vytvořením fyzické kopie souborů
+\t-f\tForce\t\t- aktualizuje cílové soubory i pokud jsou v cíli modifikovány
+\t-g\tdebuG\t\t- vypisuje ladicí hlášky
+\t-h\tHelp\t\t- zobrazí tuto nápovědu k programu
+\t-l\tLocal mode\t- lokální synchronizace s využitím symlinků z cíle do zdroje
+\t-s\tSimulation\t- provede jen informativní výpis a kontrolu, ale nekopíruje soubory
+\t-t\tsilenT\t\t- program nebude vypisovat informace o provádené činnosti
+
+Zdrojová složka webu může být zadána jako "nazev-webu" - v takovém případě se skript pokusí najít tento web v rodičovské složce skriptu a v případě neúspěchu pak ve složce zadané v konfiguračním souboru "config" ve složce skriptu.
+ K zadání zdrojové složky stačí zadat jen počáteční unikátní písmena a skript se pokusí složu najít sám.
+ Také může být zadána i s absolutní cestou ke složce - např. "/devel/my-web".
+EOT
+    exit
   end
 end
 
