@@ -78,7 +78,7 @@ class Synaum
       open_output_log
     end
     if !@error
-      @src_dir = get_website_dir(@website)
+      @src_dir = get_website_dir(@website, true)
     end
     if !@error
       load_settings
@@ -149,7 +149,7 @@ class Synaum
 
 
   # check for the existency of selected website
-  def get_website_dir (website)
+  def get_website_dir (website, is_main = false)
     if website.index('/') # - was the website name set with a path?
       return website
     else
@@ -158,9 +158,17 @@ class Synaum
       orig_path = Dir.pwd
       Dir.chdir(File.dirname(__FILE__))
       Dir.chdir('..')
-      src_dir = Dir.pwd+'/'+website
+      parent_dir = Dir.pwd
+      src_dir = parent_dir+'/'+website
       Dir.chdir(orig_path)
       if !File.exist?(src_dir)
+        # search for all folders which names starts with the given name
+        if is_main
+          res = search_for_source_dir(website, parent_dir)
+          if res
+            return res
+          end
+        end
         # try to load path from the config file
         if @config_dir != nil
           src_dir = @config_dir+'/'+website
@@ -180,12 +188,34 @@ class Synaum
             end
           end
           if !File.exist?(src_dir)
+            # search for all folders which names starts with the given name
+            if is_main
+              res = search_for_source_dir(website, @config_dir)
+              if res
+                return res
+              end
+            end
             return err 'Nebyla nalezena složka "'+ src_dir +'" pro provedení synchronizace'+ module_msg +' webu "' + website + '".'
           end
         end
       end
     end
     return src_dir
+  end
+
+
+  def search_for_source_dir (website, parent_dir)
+    possible_dirs = []
+    Dir.entries(parent_dir).each do |filename|
+      if filename =~ /^#{website}/ and File.directory?(parent_dir+'/'+filename)\
+          and File.exist?(parent_dir+'/'+filename+"/synaum")
+        possible_dirs << filename
+      end
+    end
+    if possible_dirs.count == 1
+      @website = possible_dirs[0]
+      return parent_dir + '/' + possible_dirs[0]
+    end
   end
 
 
