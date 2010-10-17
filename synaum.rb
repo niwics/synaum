@@ -6,7 +6,7 @@ require "fileutils"
 
 class Synaum
 
-  POSSIBLE_PARAMS = ['d', 'f', 'g', 'h', 'l', 's', 't']
+  POSSIBLE_PARAMS = ['d', 'f', 'g', 'h', 'l', 'r', 's', 't']
   DATE_FORMAT = "%d/%m/%Y, %H:%M:%S (%A)"
   SYNC_FILENAME = 'synaum-log'
   SYNC_FILES_LIST_NAME = 'synaum-list.txt'
@@ -55,6 +55,7 @@ class Synaum
   @ftp_remote_list
   @created_dirs
   @created_files
+  @source_missing_info
   @remote_modif_info
 
   def initialize
@@ -117,6 +118,7 @@ class Synaum
         when 'g' then @debug = true
         when 'h' then print_help_and_exit
         when 'l' then @local = true
+        when 'r' then @remove_missing_sources = true
         when 's' then @simulation = true
         when 't' then @verbose = false
         else
@@ -252,7 +254,7 @@ class Synaum
     # check params for FTP
     if !@local and !@deep
       if !@ftp_servername
-        return err 'Nebyl zadán FTP server pro synchronizaci. Pokud chcete pracovat pouze s lokálními soubory, použijte přepínač -d nebo -l (viz nápověda - "synaum help")'
+        return err 'V konfiguračním souboru "'+ @src_dir+'/synaum' +'" nebyl zadán FTP server pro synchronizaci. Pokud chcete pracovat pouze s lokálními soubory, použijte přepínač -d nebo -l (viz nápověda - "synaum help")'
       elsif !@username
         return err 'Nebylo zadáno uživatelské jméno pro připojení k FTP serveru.'
       end
@@ -594,7 +596,13 @@ EOT
         additional_files -= DST_IGNORED_FILES
       end
       additional_files.each do |f|
-        echo 'SOURCE_MISSING: '+dir+f
+        if @remove_missing_sources and @ftp
+          echo 'Odstraňuji SOURCE_MISSING: '+dir+f
+          ftp_remove @dst_dir + dir+f
+        else
+          echo 'SOURCE_MISSING: '+dir+f
+          @source_missing_info = true
+        end
       end
     end
     files.each do |file|
@@ -747,8 +755,31 @@ EOT
 #      end
 #    end
 #    return false
-#  end
+#  end@ftp.list(@dst_dir + dir + f)
+  def ftp_remove filename
+    list = @ftp.list(filename)
+    if list[0] =~ /#{filename}$/
+      begin
+        @ftp.delete(filename)
+      rescue
+        return err 'Chyba při odstraňování vzdáleného souboru "' + filename + '".'
+      end
+    else
+      ftp_rmdir filename
+    end
+  end
 
+  def ftp_rmdir dirname
+    @ftp.nlst(dirname).each do |f|
+      ftp_remove f
+    end
+    # del this dir
+    begin
+      @ftp.rmdir(dirname);
+    rescue
+      return err 'Chyba při odstraňování vzdálené složky "' + dirname + '".'
+    end
+  end
 
 
   def is_error?
@@ -788,13 +819,16 @@ EOT
 
   def print_result_message
     nochange = ''
+    if @source_missing_info
+      echo 'Některé soubory na serveru nemají odpovídající zdroj (SOURCE-MISSING). Pokud je chcete ze serveru smazat, použijte přepínač "-r".'
+    end
+    if @remote_modif_info
+      echo 'Některé soubory byly na serveru změněny (REMOTE-MODIFIED), avšak zůstaly na serveru ve své původní podobě. Pokud je chcete přepsat soubory ze zdrojového počítače, použijte přepínač "-f".'
+    end
     if @created_files + @created_dirs > 0
       real_echo "Bylo synchronizováno #{@created_files} souborů a vytvořeno #{@created_dirs} složek."
     else
       nochange = ' Nebyly provedeny žádné změny.'
-    end
-    if @remote_modif_info
-      echo 'Některé soubory byly na serveru změněny (REMOTE-MODIFIED), avšak zůstaly na serveru ve své původní podobě. Pokud je chcete přepsat soubory ze zdrojového počítače, použijte přepínač "-f".'
     end
     if @error
       err 'Synchronizace nebyla provedena!'
@@ -822,6 +856,7 @@ Povolené parametry programu:
 \t-g\tdebuG\t\t- vypisuje ladicí hlášky
 \t-h\tHelp\t\t- zobrazí tuto nápovědu k programu
 \t-l\tLocal mode\t- lokální synchronizace s využitím symlinků z cíle do zdroje
+\t-r\tRemove SOURCE-MISSING\t- odstraní ze serveru všechny soubory s chybějícím zdrojem (SOURCE-MISSING)
 \t-s\tSimulation\t- provede jen informativní výpis a kontrolu, ale nekopíruje soubory
 \t-t\tsilenT\t\t- program nebude vypisovat informace o provádené činnosti
 

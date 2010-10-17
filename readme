@@ -8,13 +8,14 @@ nebo s obrácenými parametry:
 	synaum.rb [-dfghlst] nazev-webu
 
 Povolené parametry programu:
-	-d	Deep mode	- lokální synchronizace s vytvořením fyzické kopie souborů
-	-f	Force		- aktualizuje cílové soubory i pokud jsou v cíli modifikovány
-	-g	debuG		- vypisuje ladicí hlášky
-	-h	Help		- zobrazí tuto nápovědu k programu
-	-l	Local mode	- lokální synchronizace s využitím symlinků z cíle do zdroje
-	-s	Simulation	- provede jen informativní výpis a kontrolu, ale nekopíruje soubory
-	-t	silenT		- program nebude vypisovat informace o provádené činnosti
+	-d	Deep mode             - lokální synchronizace s vytvořením fyzické kopie souborů
+	-f	Force                 - aktualizuje cílové soubory i pokud jsou v cíli modifikovány
+	-g	debuG                 - vypisuje ladicí hlášky
+	-h	Help                  - zobrazí tuto nápovědu k programu
+	-l	Local mode            - lokální synchronizace s využitím symlinků z cíle do zdroje
+        -r      Remove SOURCE-MISSING - odstraní ze serveru všechny soubory s chybějícím zdrojem (SOURCE-MISSING)
+	-s	Simulation            - provede jen informativní výpis a kontrolu, ale nekopíruje soubory
+	-t	silenT                - program nebude vypisovat informace o provádené činnosti
 
 Zdrojová složka webu může být zadána jako "nazev-webu" - v takovém případě
  se skript pokusí najít tento web v rodičovské složce skriptu a v případě
@@ -55,9 +56,11 @@ Princip programu
 5. Skript postupně prochází celou adresářovou strukturu zdrojové složky a také
     všech modulů specifikovaných v nastavení webu:
  5.1  Vypíše všechny soubory, které byly v cílové složce od poslední synchronizace
-       změněny (označeny REMOTE_MODIFIED)
- 5.2  Vypíše také všechny soubory, které jsou ve složce cílové, ale chybí
-       ve zdrojové (označeny SOURCE_MISSING)
+       změněny (označeny REMOTE_MODIFIED). Ty v případě zadaného přepínače -f
+       v cíli přepíše zdrojovou verzí souboru.
+ 5.2  Vypíše také všechny soubory a složky, které jsou ve složce cílové, ale chybí
+       ve zdrojové (označeny SOURCE_MISSING). Ty v případě zadaného přepínače -r
+       z cíle smaže.
  5.3  Soubory změněné ve zdrojové složce aktualizuje v cílové složce v případě,
        že v cílové nebyly od poslední synchronizace změněny nebo pokud je zadán
        parametr "f" (force)
