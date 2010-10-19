@@ -38,6 +38,7 @@ class Synaum
   @username
   @password
   @http_servername
+  @port
   @local_dir
   @modules
   @excluded_modules
@@ -241,6 +242,7 @@ class Synaum
           when 'username' then @username = value
           when 'password' then @password = value
           when 'http-servername' then @http_servername = value
+          when 'port' then @port = value
           when 'local-dir' then @local_dir = value
           when 'modules' then @modules = value.split(' ')
           when 'excluded-modules' then @excluded_modules = value.split(' ')
@@ -262,6 +264,13 @@ class Synaum
 
     if !@http_servername
       @http_servername = @ftp_servername
+    end
+    if @port == '443'
+      begin
+        require 'net/https'
+      rescue LoadError
+        return err "Nebyla nalezena knihovna \"net/https\", která je potřebná k HTTPS připojení k serveru (v konfiguračním souboru \"#{@src_dir}/synaum\" byl totiž zadán HTTPS port #{@port}."
+      end
     end
     # add initial slashes
     @src_ignored_files = @src_ignored_files.map {|item|  (item[0..0] == '/' ? item : '/'+item)}
@@ -452,8 +461,16 @@ EOT
       echo "Generuji vzdálený soubor pomocí PHP skriptu \"#{ajax_name}\"."
     end
     begin
-      http = Net::HTTP.new(@http_servername)
+      http = Net::HTTP.new(@http_servername, @port)
     rescue
+      return err "Chyba při vytváření HTTP spojení se serverem #{@http_servername}. Zkontrolujte adresu serveru (automaticky je shodná s FTP adresou, ale můžete ji také upravit v konfiguračním souboru \"#{@src_dir}/synaum\"."
+    end
+    if @port == '443'
+      http.use_ssl = true
+      http.verify_mode = OpenSSL::SSL::VERIFY_NONE
+    end
+    http.start
+    if !http.started?
       return err "Nepodařilo se vytvořit HTTP připojení se serverem #{@http_servername}. Zkontrolujte adresu serveru (automaticky je shodná s FTP adresou, ale můžete ji také upravit v konfiguračním souboru \"#{@src_dir}/synaum\"."
     end
     begin

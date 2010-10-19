@@ -12,6 +12,12 @@
 # Password for the FTP server
 #password my-secure-password
 
+# Name of the server for HTTP(S) connection (by default, it's same as the "ftp"
+#http-servername my-website.com
+
+# Port number for connecting to the HTTP(S) server - by default, it's 80
+#port 443
+
 # Path to the target (web) directory on localhost
 #local-dir /var/www/my-website
 local-dir /var/www/SPJFweb/admin.spjf
