@@ -20,7 +20,6 @@
 
 # Path to the target (web) directory on localhost
 #local-dir /var/www/my-website
-local-dir /var/www/SPJFweb/admin.spjf
 
 # Required modules from other websites. Modules should be set in format
 #  module-name@website, where website is name of the website or the local path
@@ -31,7 +30,6 @@ local-dir /var/www/SPJFweb/admin.spjf
 # If no module from system pseudo-website is used, then all modules from it
 #  will be used automatically.
 #modules test@someweb @other-web
-modules tokelau-shared@dlouhodobka
 
 # Excluded modules from other websites. Modules should be set in format
 #  module-name@website, where website is name of the website or the local path
