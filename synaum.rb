@@ -631,6 +631,9 @@ EOT
         if @debug
           echo '...kontrola souboru "' + src_root + dir + file+'"...'
         end
+        if dir == '/' and DST_IGNORED_FILES.include?(file)
+          next
+        end
         if @local
           if !exists
             file_move(src_root+dir+file, @dst_dir+dir+file)
