@@ -6,7 +6,7 @@ require "fileutils"
 
 class Synaum
 
-  POSSIBLE_PARAMS = ['d', 'f', 'g', 'h', 'l', 'r', 's', 't']
+  POSSIBLE_PARAMS = ['b', 'd', 'f', 'g', 'h', 'l', 'r', 's', 't']
   DATE_FORMAT = "%d/%m/%Y, %H:%M:%S (%A)"
   SYNC_FILENAME = 'synaum-log'
   SYNC_FILES_LIST_NAME = 'synaum-list.txt'
@@ -114,6 +114,7 @@ class Synaum
       @params = @params[1..-1] # is frozen...
       @params.each_char do |i|
         case i
+        when 'b' then @ignore_libraries = false
         when 'd' then @deep = true
         when 'f' then @forced = true
         when 'g' then @debug = true
@@ -457,6 +458,9 @@ EOT
   def load_ftp_list
     # call remote ajax PHP script and load directories list
     ajax_name = '/ajax/system/synaum-list-files.php?last_sync='+@last_date.to_i.to_s
+    if !@ignore_libraries
+      ajax_name += '&libs=true'
+    end
     if @debug
       echo "Generuji vzdálený soubor pomocí PHP skriptu \"#{ajax_name}\"."
     end
@@ -871,6 +875,7 @@ nebo s obrácenými parametry:
 \tsynaum.rb [-#{POSSIBLE_PARAMS.join()}] nazev-webu
 
 Povolené parametry programu:
+\t-b\tSynchronize libraries\t- zahrne do synchronizace také knihovny (libraries)
 \t-d\tDeep mode\t- lokální synchronizace s vytvořením fyzické kopie souborů
 \t-f\tForce\t\t- aktualizuje cílové soubory i pokud jsou v cíli modifikovány
 \t-g\tdebuG\t\t- vypisuje ladicí hlášky

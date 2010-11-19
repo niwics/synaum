@@ -8,6 +8,7 @@ nebo s obrácenými parametry:
 	synaum.rb [-dfghlst] nazev-webu
 
 Povolené parametry programu:
+	-b	Synchronize libraries - zahrne do synchronizace také knihovny (libraries)
 	-d	Deep mode             - lokální synchronizace s vytvořením fyzické kopie souborů
 	-f	Force                 - aktualizuje cílové soubory i pokud jsou v cíli modifikovány
 	-g	debuG                 - vypisuje ladicí hlášky
