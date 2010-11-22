@@ -261,18 +261,18 @@ class Synaum
       elsif !@username
         return err 'Nebylo zadáno uživatelské jméno pro připojení k FTP serveru.'
       end
-    end
-
-    if !@http_servername
-      @http_servername = @ftp_servername
-    end
-    if @port == '443'
-      begin
-        require 'net/https'
-      rescue LoadError
-        return err "Nebyla nalezena knihovna \"net/https\", která je potřebná k HTTPS připojení k serveru (v konfiguračním souboru \"#{@src_dir}/synaum\" byl totiž zadán HTTPS port #{@port}."
+      if !@http_servername
+        @http_servername = @ftp_servername
+      end
+      if @port == '443'
+        begin
+          require 'net/https'
+        rescue LoadError
+          return err "Nebyla nalezena knihovna \"net/https\", která je potřebná k HTTPS připojení k serveru (v konfiguračním souboru \"#{@src_dir}/synaum\" byl totiž zadán HTTPS port #{@port}."
+        end
       end
     end
+
     # add initial slashes
     @src_ignored_files = @src_ignored_files.map {|item|  (item[0..0] == '/' ? item : '/'+item)}
 

@@ -1,2 +1,3 @@
-- pri prvni synchronizaci prenest AJAXovy synaum skript
+- pri prvni synchronizaci (INIT) prenest AJAXovy synaum skript
 - u REMOTE_MODIFIED pridat date te zmeny
+- config-local.php - u remote NON-INIT nesynchronizovat
