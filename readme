@@ -8,6 +8,7 @@ nebo s obrácenými parametry:
 	synaum.rb [-dfghlst] nazev-webu
 
 Povolené parametry programu:
+        -a	synchronize All       - vynuti aktualizaci vsech vzdalenych souboru
 	-b	Synchronize libraries - zahrne do synchronizace také knihovny (libraries)
 	-d	Deep mode             - lokální synchronizace s vytvořením fyzické kopie souborů
 	-f	Force                 - aktualizuje cílové soubory i pokud jsou v cíli modifikovány
@@ -16,7 +17,7 @@ Povolené parametry programu:
 	-l	Local mode            - lokální synchronizace s využitím symlinků z cíle do zdroje
         -r      Remove SOURCE-MISSING - odstraní ze serveru všechny soubory s chybějícím zdrojem (SOURCE-MISSING)
 	-s	Simulation            - provede jen informativní výpis a kontrolu, ale nekopíruje soubory
-	-t	silenT                - program nebude vypisovat informace o provádené činnosti
+	-t	silenT                - program nebude vypisovat informace o prováděné činnosti
 
 Zdrojová složka webu může být zadána jako "nazev-webu" - v takovém případě
  se skript pokusí najít tento web v rodičovské složce skriptu a v případě

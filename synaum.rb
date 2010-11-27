@@ -6,7 +6,7 @@ require "fileutils"
 
 class Synaum
 
-  POSSIBLE_PARAMS = ['b', 'd', 'f', 'g', 'h', 'l', 'r', 's', 't']
+  POSSIBLE_PARAMS = ['a', 'b', 'd', 'f', 'g', 'h', 'l', 'r', 's', 't']
   DATE_FORMAT = "%d/%m/%Y, %H:%M:%S (%A)"
   SYNC_FILENAME = 'synaum-log'
   SYNC_FILES_LIST_NAME = 'synaum-list.txt'
@@ -28,6 +28,7 @@ class Synaum
   @local
   @simulation
   @forced
+  @all
 
   # FTP connection (Net::FTP) connector
   # - also used for bool testing - so it's pre-inited
@@ -114,6 +115,7 @@ class Synaum
       @params = @params[1..-1] # is frozen...
       @params.each_char do |i|
         case i
+        when 'a' then @all = true
         when 'b' then @ignore_libraries = false
         when 'd' then @deep = true
         when 'f' then @forced = true
@@ -651,6 +653,9 @@ EOT
           if exists and !@simulation
             # src file modification time
             src_modified = File.stat(src_root+dir+file).mtime > @last_date
+            if @all
+              src_modified = true
+            end
           end
           if exists
             dst_modified = dst_modified?(dir+file, remote_files[file])  # dst file modification time
@@ -875,7 +880,8 @@ nebo s obrácenými parametry:
 \tsynaum.rb [-#{POSSIBLE_PARAMS.join()}] nazev-webu
 
 Povolené parametry programu:
-\t-b\tSynchronize libraries\t- zahrne do synchronizace také knihovny (libraries)
+\t-a\tsynchronize All\t-vynuti aktualizaci vsech vzdalenych souboru
+\t-b\tsynchronize liBraries\t- zahrne do synchronizace také knihovny (libraries)
 \t-d\tDeep mode\t- lokální synchronizace s vytvořením fyzické kopie souborů
 \t-f\tForce\t\t- aktualizuje cílové soubory i pokud jsou v cíli modifikovány
 \t-g\tdebuG\t\t- vypisuje ladicí hlášky
@@ -883,7 +889,7 @@ Povolené parametry programu:
 \t-l\tLocal mode\t- lokální synchronizace s využitím symlinků z cíle do zdroje
 \t-r\tRemove SOURCE-MISSING\t- odstraní ze serveru všechny soubory s chybějícím zdrojem (SOURCE-MISSING)
 \t-s\tSimulation\t- provede jen informativní výpis a kontrolu, ale nekopíruje soubory
-\t-t\tsilenT\t\t- program nebude vypisovat informace o provádené činnosti
+\t-t\tsilenT\t\t- program nebude vypisovat informace o prováděné činnosti
 
 Zdrojová složka webu může být zadána jako "nazev-webu" - v takovém případě se skript pokusí najít tento web v rodičovské složce skriptu a v případě neúspěchu pak ve složce zadané v konfiguračním souboru "config" ve složce skriptu.
  K zadání zdrojové složky stačí zadat jen počáteční unikátní písmena a skript se pokusí složu najít sám.
