@@ -10,7 +10,8 @@ class Synaum
   DATE_FORMAT = "%d/%m/%Y, %H:%M:%S (%A)"
   SYNC_FILENAME = 'synaum-log'
   SYNC_FILES_LIST_NAME = 'synaum-list.txt'
-  SRC_IGNORED_FILES = ['/modules', '/config-local.php']
+  SRC_IGNORED_FILES = ['/modules']
+  SRC_FTP_IGNORED_FILES = ['/config-local.php']
   DST_IGNORED_FILES = ['synaum-log', 'synaum-list.txt']
   HELP_NAMES = ['help', '-help', '-h', '--help', '--h']
 
@@ -133,6 +134,11 @@ class Synaum
       end
     else
       @params = ''
+    end
+
+    # ignore local config when local config
+    if @ftp
+      @src_ignored_files += SRC_FTP_IGNORED_FILES
     end
 
     # pre-init ftp value (later will be really inited in ftp_connect function)
