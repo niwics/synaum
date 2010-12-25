@@ -79,14 +79,10 @@ class Synaum
     @ignore_libraries = true
     parse_params
     if !@error
-      open_output_log
-    end
-    if !@error
       @src_dir = get_website_dir(@website, true)
     end
-    if !@error
-      load_settings
-    end
+    open_output_log if !@error
+    load_settings if !@error
   end
 
 
@@ -151,11 +147,12 @@ class Synaum
   def open_output_log
     # create dirs if they don't exist
     this_dir = File.dirname(__FILE__)
-    now = Time.now().strftime("%d-%m-%Y, %H:%M:%S (%A)")
+    website_dirname = @website.gsub('/', '_')
+    now = Time.now().strftime("%Y-%m-%d, %H:%M:%S (%A)")
     cond_mkdir_local(this_dir+'/logs')
-    cond_mkdir_local(this_dir+'/logs/'+@website)
-    cond_mkdir_local(this_dir+'/logs/'+@website+'/'+@mode)
-    @output_log = File.open(this_dir+'/logs/'+@website+'/'+@mode+'/'+now, "w")
+    cond_mkdir_local(this_dir+'/logs/'+website_dirname)
+    cond_mkdir_local(this_dir+'/logs/'+website_dirname+'/'+@mode)
+    @output_log = File.open(this_dir+'/logs/'+website_dirname+'/'+@mode+'/'+now, "w")
   end
 
 
@@ -163,15 +160,19 @@ class Synaum
   # check for the existency of selected website
   def get_website_dir (website, is_main = false)
     if website.index('/') # - was the website name set with a path?
-      return website
+      src_dir = website
+      # check existency of specified path
+      if !File.exist?(website)
+        return err 'Zadaný adresář pro synchronizaci "'+ src_dir +'" není platný.'
+      end
     else
-      module_msg = website != @website ? ' modulu z' : ''
+      module_msg = is_main ? '' : ' modulu z'
       # try to select the website from the parent folder
       orig_path = Dir.pwd
       Dir.chdir(File.dirname(__FILE__))
       Dir.chdir('..')
       parent_dir = Dir.pwd
-      src_dir = parent_dir+'/'+website
+      src_dir = script_based_dir = parent_dir+'/'+website
       Dir.chdir(orig_path)
       if !File.exist?(src_dir)
         # search for all folders which names starts with the given name
@@ -182,13 +183,13 @@ class Synaum
           end
         end
         # try to load path from the config file
-        if @config_dir != nil
+        if @config_dir != nil # is cached in @config_dir yet?
           src_dir = @config_dir+'/'+website
         elsif !File.exist?(File.dirname(__FILE__)+"/config")
           @config_dir = false # for future use
           err 'Nepodařilo se najít složku "'+ src_dir +'" pro provedení synchronizace'+ module_msg +' webu "'+ website +'", ani nebyl nalezen soubor "'+ File.dirname(__FILE__) +'/config", odkud by bylo možné načíst cestu k této složce.'
           return err "Možné zadání cesty ke složce:\n - jako parametr skriptu (např. /work/my-website)\n - v parametru jen název složky např. my-website)\n     - a tato složka musí být umístěna vedle složky se tímto Synaum skriptem\n     - NEBO cesta musí být zadána v souboru config umístěném vedl tohoto Synaum skriptu."
-        else
+        else  # load value and cache it into the variable @config_dir
           # load value from config file
           config_file = File.open(File.dirname(__FILE__)+"/config")
           while line = config_file.gets
@@ -207,7 +208,8 @@ class Synaum
                 return res
               end
             end
-            return err 'Nebyla nalezena složka "'+ src_dir +'" pro provedení synchronizace'+ module_msg +' webu "' + website + '".'
+            dir_string = (script_based_dir == src_dir ? '' : script_based_dir + ' ani ') + src_dir
+            return err 'Nebyla nalezena složka "'+ dir_string +'" pro provedení synchronizace'+ module_msg +' webu "' + website + '".'
           end
         end
       end
@@ -217,6 +219,9 @@ class Synaum
 
 
   def search_for_source_dir (website, parent_dir)
+    if !File.exist?(parent_dir)
+      return false
+    end
     possible_dirs = []
     Dir.entries(parent_dir).each do |filename|
       if filename =~ /^#{website}/ and File.directory?(parent_dir+'/'+filename)\
