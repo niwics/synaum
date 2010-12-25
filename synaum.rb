@@ -324,7 +324,7 @@ class Synaum
     end
     # do synchronization
     sync_modules
-    if !@error
+    if !@error and File.exist?(@src_dir)
       sync('/', @src_dir)
     end
     write_log_file
@@ -362,7 +362,7 @@ class Synaum
     end
     separ = @local_dir.rindex(File::SEPARATOR) - 1
     local_parent = @local_dir[0..separ]
-    if !File.exists?(local_parent)
+    if !File.exist?(local_parent)
       return err 'Výstupní složka "'+ local_parent +'" pro synchronizaci na localhostu neexistuje.'
     end
     if !File.writable?(local_parent)
@@ -583,7 +583,7 @@ EOT
       sync('/modules/', src_dir+'/www', modules_array)
     end
     # do sync with modules from this website
-    sync('/modules/', @src_dir)
+    sync('/modules/', @src_dir) if File.exist?(@src_dir + '/modules')
   end
 
 
