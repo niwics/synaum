@@ -1,5 +1,5 @@
 #!/usr/bin/ruby
-# author Miroslav Kvasnica - niwi (miradrda@volny.cz), niwi.cz
+# author Miroslav Kvasnica - niwi (miradrda@volny.cz), niwi.cz, 2010
 require 'net/ftp'
 require 'net/http'
 require "fileutils"
@@ -284,6 +284,8 @@ class Synaum
           return err "Nebyla nalezena knihovna \"net/https\", která je potřebná k HTTPS připojení k serveru (v konfiguračním souboru \"#{@src_dir}/synaum\" byl totiž zadán HTTPS port #{@port}."
         end
       end
+    elsif @local_dir == ''
+      return err 'V konfiguračním souboru "'+ @src_dir+'/synaum' +'" nebyla zadána složka pro lokální synchronizaci (local-dir).'
     end
 
     # add initial slashes
