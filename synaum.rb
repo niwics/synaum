@@ -497,6 +497,16 @@ EOT
     rescue
       return err "Nepodařilo se načíst AJAXový PHP skript \"#{@http_servername}#{ajax_name}\"."
     end
+    if res.code[0..0] != '2'
+      echo 'Chcete provést inicializaci nového webu? [y/n]'
+      answer = gets
+      if answer.strip == 'y'
+        return true
+      else
+        echo "Nebyla provedena inicializace a ani synchronizace.\nAJAXový Synaum skript \"#{@http_servername}#{ajax_name}\" nebyl nalezen."
+        exit
+      end
+    end
     if res.body != '1'
       return err "Neúspěšné volání AJAXového PHP skriptu - skript \"#{@http_servername}#{ajax_name}\" nevrátil hodnotu \"1\"."
     end
