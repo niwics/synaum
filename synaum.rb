@@ -810,7 +810,8 @@ EOT
 #  end@ftp.list(@dst_dir + dir + f)
   def ftp_remove filename
     list = @ftp.list(filename)
-    if list[0] =~ /#{filename}$/
+    filename_esc = Regexp.escape(filename)
+    if list[0] =~ /#{filename_esc}$/
       begin
         @ftp.delete(filename)
       rescue
