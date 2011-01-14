@@ -479,10 +479,11 @@ EOT
     if @debug
       echo "Generuji vzdálený soubor pomocí PHP skriptu \"#{ajax_name}\"."
     end
+    @port_string = @port == '443' ? 'https' :'http'
     begin
       http = Net::HTTP.new(@http_servername, @port)
     rescue
-      return err "Chyba při vytváření HTTP spojení se serverem #{@http_servername}. Zkontrolujte adresu serveru (automaticky je shodná s FTP adresou, ale můžete ji také upravit v konfiguračním souboru \"#{@src_dir}/synaum\"."
+      return err "Chyba při vytváření HTTP spojení se serverem #{@port_string}://#{@http_servername}. Zkontrolujte adresu serveru (automaticky je shodná s FTP adresou, ale můžete ji také upravit v konfiguračním souboru \"#{@src_dir}/synaum\"."
     end
     if @port == '443'
       http.use_ssl = true
@@ -490,12 +491,12 @@ EOT
     end
     http.start
     if !http.started?
-      return err "Nepodařilo se vytvořit HTTP připojení se serverem #{@http_servername}. Zkontrolujte adresu serveru (automaticky je shodná s FTP adresou, ale můžete ji také upravit v konfiguračním souboru \"#{@src_dir}/synaum\"."
+      return err "Nepodařilo se vytvořit HTTP připojení se serverem \"#{@port_string}://#{@http_servername}\". Zkontrolujte adresu serveru (automaticky je shodná s FTP adresou, ale můžete ji také upravit v konfiguračním souboru \"#{@src_dir}/synaum\"."
     end
     begin
       res = http.get(ajax_name)
     rescue
-      return err "Nepodařilo se načíst AJAXový PHP skript \"#{@http_servername}#{ajax_name}\"."
+      return err "Nepodařilo se načíst AJAXový PHP skript \"#{@port_string}://#{@http_servername}#{ajax_name}\"."
     end
     if res.code[0..0] != '2'
       echo 'Chcete provést inicializaci nového webu? [y/n]'
@@ -503,12 +504,12 @@ EOT
       if answer.strip == 'y'
         return true
       else
-        echo "Nebyla provedena inicializace a ani synchronizace.\nAJAXový Synaum skript \"#{@http_servername}#{ajax_name}\" nebyl nalezen."
+        echo "Nebyla provedena inicializace a ani synchronizace.\nAJAXový Synaum skript \"#{@port_string}://#{@http_servername}#{ajax_name}\" nebyl nalezen."
         exit
       end
     end
     if res.body != '1'
-      return err "Neúspěšné volání AJAXového PHP skriptu - skript \"#{@http_servername}#{ajax_name}\" nevrátil hodnotu \"1\"."
+      return err "Neúspěšné volání AJAXového PHP skriptu - skript \"#{@port_string}://#{@http_servername}#{ajax_name}\" nevrátil hodnotu \"1\"."
     end
     if !dst_file_exist?(SYNC_FILES_LIST_NAME)
       return err "Nepodařilo se najít vzdálený soubor \"#{@dst_dir}/#{SYNC_FILES_LIST_NAME}\"."
