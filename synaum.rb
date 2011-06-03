@@ -10,6 +10,8 @@ class Synaum
   DATE_FORMAT = "%d/%m/%Y, %H:%M:%S (%A)"
   SYNC_FILENAME = 'synaum-log'
   SYNC_FILES_LIST_NAME = 'synaum-list.txt'
+  AJAX_SYNAUM_FILE = '/ajax/system/synaum-list-files.php'
+  FTP_SYNAUM_FILE = '/modules/system/ajax/synaum-list-files.php'
   SRC_IGNORED_FILES = ['/modules']
   SRC_FTP_IGNORED_FILES = ['/config-local.php']
   DST_IGNORED_FILES = ['synaum-log', 'synaum-list.txt']
@@ -132,14 +134,15 @@ class Synaum
       @params = ''
     end
 
+    # pre-init ftp value (later will be really inited in ftp_connect function)
+    @ftp = (!@local and !@deep)
+    @mode = @ftp ? 'ftp' : (@local ? 'local' : 'deep')
+
     # ignore local config when local config
     if @ftp
       @src_ignored_files += SRC_FTP_IGNORED_FILES
     end
-
-    # pre-init ftp value (later will be really inited in ftp_connect function)
-    @ftp = (!@local and !@deep)
-    @mode = @ftp ? 'ftp' : (@local ? 'local' : 'deep')
+    
     return true
   end
 
@@ -248,7 +251,11 @@ class Synaum
       if line[0,1] != '#' and line != ''
         name, value = line.split(' ', 2)
         if !value
-          return err 'Nebyla zadána hodnota u parametru "'+ name +'" v konfiguračním souboru "'+ @src_dir+'/synaum' +'".'
+          if name == 'ftp' or name == 'local-dir'
+            return err 'Nebyla zadána hodnota u parametru "'+ name +'" v konfiguračním souboru "'+ @src_dir+'/synaum' +'".'
+          else  # ignore other empty variables
+            next
+          end
         end
         case name
           when 'ftp' then @ftp_servername = value
@@ -350,7 +357,7 @@ class Synaum
     end
     echo(' úspěšně připojeno.')
     
-    if !dst_file_exist?(@ftp_dir, false)
+    if @ftp_dir != '' and !dst_file_exist?(@ftp_dir, false)
       return err "Na serveru nebyla nalezena zadaná kořenová složka \"#{@ftp_dir}\". Zkontrolujte existenci této složky a její oprávnění zápisu. Cestu k ní je možné upravit v konfiguračním souboru \"#{@src_dir}/synaum\"."
     end
     return true
@@ -472,7 +479,7 @@ EOT
 
   def load_ftp_list
     # call remote ajax PHP script and load directories list
-    ajax_name = '/ajax/system/synaum-list-files.php?last_sync='+@last_date.to_i.to_s
+    ajax_name = AJAX_SYNAUM_FILE + '?last_sync='+@last_date.to_i.to_s
     if !@ignore_libraries
       ajax_name += '&libs=true'
     end
@@ -499,12 +506,19 @@ EOT
       return err "Nepodařilo se načíst AJAXový PHP skript \"#{@port_string}://#{@http_servername}#{ajax_name}\"."
     end
     if res.code[0..0] != '2'
-      echo 'Chcete provést inicializaci nového webu? [y/n]'
+      if dst_file_exist?(FTP_SYNAUM_FILE)
+        err "Chyba při volání AJAXového Synaum skriptu \"#{@port_string}://#{@http_servername}#{ajax_name}\"."
+        echo "Skript na FTP existuje, ale jeho volání přes HTTP selhalo."
+        echo "HTTP odpověď: " + res.code + ": " + res.message
+        exit
+      end
+      echo 'Chcete provést inicializaci nového webu? [Y/n]'
       answer = gets
-      if answer.strip == 'y'
+      if answer.strip! == 'y' or answer == ''
+        @ignore_libraries = false
         return true
       else
-        echo "Nebyla provedena inicializace a ani synchronizace.\nAJAXový Synaum skript \"#{@port_string}://#{@http_servername}#{ajax_name}\" nebyl nalezen."
+        err "Nebyla provedena inicializace a ani synchronizace.\nAJAXový Synaum skript \"#{@port_string}://#{@http_servername}#{ajax_name}\" nebyl nalezen."
         exit
       end
     end
@@ -652,6 +666,7 @@ EOT
         end
       end
     end
+    
     files.each do |file|
       if file != '.' and file != '..' and\
           file !~ /~$/ and (!@ignore_libraries or file != 'libraries' or dir !~ /.*\/modules\/[^\/]+\/$/) and\
