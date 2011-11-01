@@ -19,6 +19,7 @@ class Synaum
   @error
   @verbose
   @debug
+  @interactive
   @ignore_libraries
 
   @website
@@ -75,6 +76,7 @@ class Synaum
     @module_names = []
     @ftp_remote_list = {}
     @verbose = true
+    @interactive = true
     @last_date = Time.gm(1970, 1, 1)  # gm for global time
     @created_dirs = @created_files = 0
     @ignore_libraries = true
@@ -120,7 +122,7 @@ class Synaum
         when 'g' then @debug = true
         when 'h' then print_help_and_exit
         when 'l' then @local = true
-        when 'r' then @remove_missing_sources = true
+        when 'n' then @interactive = false
         when 's' then @simulation = true
         when 't' then @verbose = false
         else
@@ -513,7 +515,8 @@ EOT
       end
       echo 'Chcete provést inicializaci nového webu? [Y/n]'
       answer = gets
-      if answer.strip! == 'y' or answer == ''
+      answer = answer.strip.downcase
+      if answer == 'y' or answer == ''
         @ignore_libraries = false
         return true
       else
@@ -647,20 +650,37 @@ EOT
     remote_files = list_remote_files(@dst_dir + dir)
     # check additional files on the target direcory
     if src_root == @src_dir or (dir != '/modules/' and dir != '/')
-      additional_files = remote_files.keys - files
+      surplus_files = remote_files.keys - files
       if dir == '/modules/'
-        additional_files -= @module_names
+        surplus_files -= @module_names
       elsif dir == '/'
         system_dir = get_website_dir('gorazd-system')
-        additional_files -= Dir.entries(system_dir+'/www')
-        additional_files -= DST_IGNORED_FILES
+        surplus_files -= Dir.entries(system_dir+'/www')
+        surplus_files -= DST_IGNORED_FILES
       end
-      additional_files.each do |f|
-        if @remove_missing_sources and @ftp
-          echo 'Odstraňuji SOURCE_MISSING: '+dir+f
-          ftp_remove @dst_dir + dir+f
+      surplus_files.each do |f|
+        file = dir+f
+        echo_source_missing = false
+        if @ftp and @interactive
+          println "\n**  SOURCE_MISSING: " + file
+          print '**  Vyberte akci: Use/load remote (u), Remove remote (r), Skip (s, výchozí):'
+          answer = gets
+          print "\n"
+          answer = answer.strip.downcase
+          if answer == 'u' or answer == ''
+            echo 'Stahuji SOURCE_MISSING: '+file
+            @ftp.getbinaryfile(@dst_dir+file, @src_dir+file)
+          elsif answer == 'r'
+            echo 'Odstraňuji SOURCE_MISSING: '+file
+            ftp_remove @dst_dir + file
+          else
+            echo_source_missing = true
+          end
         else
-          echo 'SOURCE_MISSING: '+dir+f
+          echo_source_missing = true
+        end
+        if echo_source_missing
+          echo 'SOURCE_MISSING: '+file
           @source_missing_info = true
         end
       end
@@ -825,8 +845,7 @@ EOT
 #  end@ftp.list(@dst_dir + dir + f)
   def ftp_remove filename
     list = @ftp.list(filename)
-    filename_esc = Regexp.escape(filename)
-    if list[0] =~ /#{filename_esc}$/
+    if list[0][0] != 'd'
       begin
         @ftp.delete(filename)
       rescue
@@ -935,6 +954,10 @@ Zdrojová složka webu může být zadána jako "nazev-webu" - v takovém příp
  Také může být zadána i s absolutní cestou ke složce - např. "/devel/my-web".
 EOT
     exit
+  end
+
+  def println msg
+    print msg + "\n"
   end
 end
 
