@@ -10,8 +10,7 @@ class Synaum
   DATE_FORMAT = "%d/%m/%Y, %H:%M:%S (%A)"
   SYNC_FILENAME = 'synaum-log'
   SYNC_FILES_LIST_NAME = 'synaum-list.txt'
-  AJAX_SYNAUM_FILE = '/ajax/system/synaum-list-files.php'
-  FTP_SYNAUM_FILE = '/modules/system/ajax/synaum-list-files.php'
+  SYNAUM_FILE = '/modules/system/ajax/synaum-list-files.php'
   SRC_IGNORED_FILES = ['/modules']
   SRC_FTP_IGNORED_FILES = ['/config-local.php']
   DST_IGNORED_FILES = ['synaum-log', 'synaum-list.txt']
@@ -479,7 +478,7 @@ EOT
 
   def load_ftp_list
     # call remote ajax PHP script and load directories list
-    ajax_name = AJAX_SYNAUM_FILE + '?last_sync='+@last_date.to_i.to_s
+    ajax_name = SYNAUM_FILE + '?last_sync='+@last_date.to_i.to_s
     if !@ignore_libraries
       ajax_name += '&libs=true'
     end
@@ -506,7 +505,7 @@ EOT
       return err "Nepodařilo se načíst AJAXový PHP skript \"#{@port_string}://#{@http_servername}#{ajax_name}\"."
     end
     if res.code[0..0] != '2'
-      if dst_file_exist?(FTP_SYNAUM_FILE)
+      if dst_file_exist?(SYNAUM_FILE)
         err "Chyba při volání AJAXového Synaum skriptu \"#{@port_string}://#{@http_servername}#{ajax_name}\"."
         echo "Skript na FTP existuje, ale jeho volání přes HTTP selhalo."
         echo "HTTP odpověď: " + res.code + ": " + res.message

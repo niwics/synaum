@@ -9,7 +9,7 @@ nebo s obrácenými parametry:
 
 Povolené parametry programu:
         -a	synchronize All       - vynuti aktualizaci vsech vzdalenych souboru
-	-b	Synchronize libraries - zahrne do synchronizace také knihovny (libraries)
+	-b	synchronize liBraries - zahrne do synchronizace také knihovny (libraries)
 	-d	Deep mode             - lokální synchronizace s vytvořením fyzické kopie souborů
 	-f	Force                 - aktualizuje cílové soubory i pokud jsou v cíli modifikovány
 	-g	debuG                 - vypisuje ladicí hlášky
