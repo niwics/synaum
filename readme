@@ -10,11 +10,12 @@ nebo s obrácenými parametry:
 Povolené parametry programu:
         -a	synchronize All       - vynuti aktualizaci vsech vzdalenych souboru
 	-b	synchronize liBraries - zahrne do synchronizace také knihovny (libraries)
-	-d	Deep mode             - lokální synchronizace s vytvořením fyzické kopie souborů
-	-f	Force                 - aktualizuje cílové soubory i pokud jsou v cíli modifikovány
-	-g	debuG                 - vypisuje ladicí hlášky
+	-d	Debug                 - vypisuje ladicí hlášky
+	-e	dEep mode             - lokální synchronizace s vytvořením fyzické kopie souborů
+	-f	Force REMOTE-MODIFIED - přepíše cílové soubory i pokud jsou v cíli modifikovány
 	-h	Help                  - zobrazí tuto nápovědu k programu
 	-l	Local mode            - lokální synchronizace s využitím symlinků z cíle do zdroje
+        -n	Non-interactive       - neinteraktivní režim (vhodný pro práci se SOURCE_MISSING a REMOTE_MODIFIED)
         -r      Remove SOURCE-MISSING - odstraní ze serveru všechny soubory s chybějícím zdrojem (SOURCE-MISSING)
 	-s	Simulation            - provede jen informativní výpis a kontrolu, ale nekopíruje soubory
 	-t	silenT                - program nebude vypisovat informace o prováděné činnosti
@@ -32,7 +33,7 @@ Módy skriptu:
 (default) FTP (synchronizace FTP)
   Provádí se synchronizace na FTP server.
 
--d Local deep sync (lokální synchronizace - "deep" (hluboká) kopie souborů)
+-e Local deep sync (lokální synchronizace - "deep" (hluboká) kopie souborů)
   Provádí se synchronizace na lokální server.
   Do cílové složky jsou přímo kopírovány všechny soubory - narozdílod módu "l",
    kdy se jen vytváří symlinky.
@@ -59,13 +60,15 @@ Princip programu
     všech modulů specifikovaných v nastavení webu:
  5.1  Vypíše všechny soubory, které byly v cílové složce od poslední synchronizace
        změněny (označeny REMOTE_MODIFIED). Ty v případě zadaného přepínače -f
-       v cíli přepíše zdrojovou verzí souboru.
+       v cíli přepíše zdrojovou verzí souboru. Jinak nabídne možnosti, jak tento
+       problém vyřešit, anebo v neinteraktivním režimu soubory pouze přeskočí.
  5.2  Vypíše také všechny soubory a složky, které jsou ve složce cílové, ale chybí
        ve zdrojové (označeny SOURCE_MISSING). Ty v případě zadaného přepínače -r
-       z cíle smaže.
+       z cíle smaže. Jinak nabídne možnosti, jak tento problém vyřešit, anebo
+       v neinteraktivním režimu soubory pouze přeskočí.
  5.3  Soubory změněné ve zdrojové složce aktualizuje v cílové složce v případě,
        že v cílové nebyly od poslední synchronizace změněny nebo pokud je zadán
-       parametr "f" (force)
+       parametr -a (sync All).
 6. Po úspěšné synchronizaci skript uloží informace o jejím průběhu zpátky
     do souboru synaum-log
 

@@ -20,6 +20,7 @@ class Synaum
   @verbose
   @debug
   @interactive
+  @remove_missing_sources
   @ignore_libraries
 
   @website
@@ -117,12 +118,13 @@ class Synaum
         case i
         when 'a' then @all = true
         when 'b' then @ignore_libraries = false
-        when 'd' then @deep = true
+        when 'd' then @debug = true
+        when 'e' then @deep = true
         when 'f' then @forced = true
-        when 'g' then @debug = true
         when 'h' then print_help_and_exit
         when 'l' then @local = true
         when 'n' then @interactive = false
+        when 'r' then @remove_missing_sources = true
         when 's' then @simulation = true
         when 't' then @verbose = false
         else
@@ -659,7 +661,7 @@ EOT
         surplus_files -= DST_IGNORED_FILES
       end
       surplus_files.each do |f|
-        handle_source_missing (dir+f, src_root)
+        handle_source_missing(dir+f, src_root)
       end
     end
     
@@ -722,10 +724,14 @@ EOT
         @ftp.getbinaryfile(@dst_dir+path, src_root+path)
         return
       elsif answer == 'r'
-        echo 'SOURCE_MISSING - odstraňuji: '+path
-        ftp_remove @dst_dir + path
-        return
+        remove = true
       end
+    end
+
+    if @remove_missing_sources or remove
+      echo 'SOURCE_MISSING - odstraňuji: '+path
+      ftp_remove @dst_dir + path
+      return
     end
 
     # else - echo
@@ -990,16 +996,17 @@ nebo s obrácenými parametry:
 \tsynaum.rb [-#{POSSIBLE_PARAMS.join()}] nazev-webu
 
 Povolené parametry programu:
-\t-a\tsynchronize All\t-vynuti aktualizaci vsech vzdalenych souboru
-\t-b\tsynchronize liBraries\t- zahrne do synchronizace také knihovny (libraries)
-\t-d\tDeep mode\t- lokální synchronizace s vytvořením fyzické kopie souborů
-\t-f\tForce\t\t- aktualizuje cílové soubory i pokud jsou v cíli modifikovány
-\t-g\tdebuG\t\t- vypisuje ladicí hlášky
-\t-h\tHelp\t\t- zobrazí tuto nápovědu k programu
-\t-l\tLocal mode\t- lokální synchronizace s využitím symlinků z cíle do zdroje
-\t-r\tRemove SOURCE-MISSING\t- odstraní ze serveru všechny soubory s chybějícím zdrojem (SOURCE-MISSING)
-\t-s\tSimulation\t- provede jen informativní výpis a kontrolu, ale nekopíruje soubory
-\t-t\tsilenT\t\t- program nebude vypisovat informace o prováděné činnosti
+\t-a\tsynchronize All\n\t\t-vynuti aktualizaci vsech vzdalenych souboru
+\t-b\tsynchronize liBraries\n\t\t- zahrne do synchronizace také knihovny (libraries)
+\t-d\tDebug\n\t\t- vypisuje ladicí hlášky
+\t-e\tdEep mode\n\t\t- lokální synchronizace s vytvořením fyzické kopie souborů
+\t-f\tForce REMOTE-MODIFIED\n\t\t- přepíše cílové soubory i pokud jsou v cíli modifikovány
+\t-h\tHelp\n\t\t- zobrazí tuto nápovědu k programu
+\t-l\tLocal mode\n\t\t- lokální synchronizace s využitím symlinků z cíle do zdroje
+\t-n\tNon-interactive\n\t\t- neinteraktivní režim (vhodný pro práci se SOURCE_MISSING a REMOTE_MODIFIED)
+\t-r\tRemove SOURCE-MISSING\n\t\t- odstraní ze serveru všechny soubory s chybějícím zdrojem (SOURCE-MISSING)
+\t-s\tSimulation\n\t\t- provede jen informativní výpis a kontrolu, ale nekopíruje soubory
+\t-t\tsilenT\n\t\t- program nebude vypisovat informace o prováděné činnosti
 
 Zdrojová složka webu může být zadána jako "nazev-webu" - v takovém případě se skript pokusí najít tento web v rodičovské složce skriptu a v případě neúspěchu pak ve složce zadané v konfiguračním souboru "config" ve složce skriptu.
  K zadání zdrojové složky stačí zadat jen počáteční unikátní písmena a skript se pokusí složu najít sám.
