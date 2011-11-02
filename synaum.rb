@@ -659,30 +659,7 @@ EOT
         surplus_files -= DST_IGNORED_FILES
       end
       surplus_files.each do |f|
-        file = dir+f
-        echo_source_missing = false
-        if @ftp and @interactive
-          println "\n**  SOURCE_MISSING: " + file
-          print '**  Vyberte akci: Use/load remote (u), Remove remote (r), Skip (s, výchozí):'
-          answer = gets
-          print "\n"
-          answer = answer.strip.downcase
-          if answer == 'u' or answer == ''
-            echo 'Stahuji SOURCE_MISSING: '+file
-            @ftp.getbinaryfile(@dst_dir+file, @src_dir+file)
-          elsif answer == 'r'
-            echo 'Odstraňuji SOURCE_MISSING: '+file
-            ftp_remove @dst_dir + file
-          else
-            echo_source_missing = true
-          end
-        else
-          echo_source_missing = true
-        end
-        if echo_source_missing
-          echo 'SOURCE_MISSING: '+file
-          @source_missing_info = true
-        end
+        handle_source_missing (dir+f, src_root)
       end
     end
     
@@ -691,7 +668,7 @@ EOT
           file !~ /~$/ and (!@ignore_libraries or file != 'libraries' or dir !~ /.*\/modules\/[^\/]+\/$/) and\
           !@src_ignored_files.include?(dir+file)\
           and (!allowed_files or allowed_files.include?(file))
-        exists = remote_files.key?(file)
+        remote_exists = remote_files.key?(file)
         if @debug
           echo '...kontrola souboru "' + src_root + dir + file+'"...'
         end
@@ -699,41 +676,110 @@ EOT
           next
         end
         if @local
-          if !exists
+          if !remote_exists
             file_move(src_root+dir+file, @dst_dir+dir+file)
           end
         elsif File.directory?(src_root+dir+file)
-          if !exists and !@simulation
+          if !remote_exists and !@simulation
             mkdir(@dst_dir+dir+file)
           end
           sync(dir + file + '/', src_root)
-        else
-          if exists and !@simulation
-            # src file modification time
-            src_modified = File.stat(src_root+dir+file).mtime > @last_date
+        else  # handle remote file...
+          copy = false
+          if @simulation
+            copy = false
+          elsif remote_exists
             if @all
-              src_modified = true
+              copy = true
+            else
+              # src file modification time
+              copy = File.stat(src_root+dir+file).mtime > @last_date
             end
-          end
-          if exists
-            dst_modified = dst_modified?(dir+file, remote_files[file])  # dst file modification time
-          end
-          if dst_modified
-            if @verbose
-              echo 'REMOTE-MODIFIED: '+dir+file
+            if dst_modified?(dir+file, remote_files[file])  # dst file modification time
+              copy = handle_remote_modified(dir + file, src_root)
             end
-            if !@forced
-              @new_remote_modifieds << dir+file
-            end
+          else  # copy non-existing
+            copy = true
           end
-          if !@simulation and (!exists or (src_modified and !dst_modified) or (dst_modified and @forced))
+          if copy #(!remote_exists or (src_modified and !dst_modified) or (dst_modified and @forced))
             file_move(src_root+dir+file, @dst_dir+dir+file)
-          elsif dst_modified
-            @remote_modif_info = true
           end
         end
       end
     end
+  end
+
+
+  def handle_source_missing (path, src_root)
+    if @ftp and @interactive
+      println "\n**  SOURCE_MISSING: " + path
+      print '**  Vyberte akci: Use/load remote (u), Remove remote (r), Skip (s, výchozí):'
+      answer = gets
+      print "\n"
+      answer = answer.strip.downcase
+      if answer == 'u'
+        echo 'SOURCE_MISSING - stahuji: '+path
+        @ftp.getbinaryfile(@dst_dir+path, src_root+path)
+        return
+      elsif answer == 'r'
+        echo 'SOURCE_MISSING - odstraňuji: '+path
+        ftp_remove @dst_dir + path
+        return
+      end
+    end
+
+    # else - echo
+    if @verbose
+      echo 'SOURCE_MISSING: '+path
+      @source_missing_info = true
+    end
+  end
+
+  def handle_remote_modified (path, src_root)
+    overwrite_string = 'REMOTE-MODIFIED - přepíšu vzdálený lokálním: '+path
+    if @forced
+      echo overwrite_string
+      return true # true means: COPY IN CALLER FUNCTION
+    end
+
+    if @ftp and @interactive
+      println "\n**  REMOTE-MODIFIED: " + path
+      while true  # loop for changing options (caused by diff)
+        print '**  Vyberte akci: Use/load remote (u), Overwrite by local (l), Diff (d), Skip (s, výchozí):'
+        answer = gets
+        print "\n"
+        answer = answer.strip.downcase
+        if answer == 'u'
+          echo 'REMOTE-MODIFIED - stahuji vzdálený: '+path
+          @ftp.getbinaryfile(@dst_dir+path, @src_dir+path)
+          return false  # false means: NO COPY IN CALLER FUNCTION
+        elsif answer == 'l'
+          echo overwrite_string
+          return true # true means: COPY IN CALLER FUNCTION
+        elsif answer == 'd'
+          tmp_path = '/tmp/remote_synaum_diff'
+          @ftp.getbinaryfile(@dst_dir+path, tmp_path)
+          res = system('kompare '+ src_root+path +' '+ tmp_path)
+          if !res
+            println 'Nebyl nalezen program Kompare pro porovnání souborů!'
+          end
+          File.delete(tmp_path)
+        else  # skip - end of loop
+          break
+        end
+      end
+    end
+
+    if @ftp
+      @new_remote_modifieds << path
+    end
+    
+    # else - echo
+    if @verbose
+      echo 'REMOTE-MODIFIED: '+path
+      @remote_modif_info = true
+    end
+    return false # false means: NO COPY IN CALLER FUNCTION
   end
 
 
@@ -843,20 +889,26 @@ EOT
 #    end
 #    return false
 #  end@ftp.list(@dst_dir + dir + f)
-  def ftp_remove filename
-    list = @ftp.list(filename)
-    if list[0][0] != 'd'
+  def ftp_remove path
+    is_file = false
+    begin
+      @ftp.chdir(path)
+    rescue Exception => e
+      is_file = true
+    end
+    if is_file
       begin
-        @ftp.delete(filename)
+        @ftp.delete(path)
       rescue
-        return err 'Chyba při odstraňování vzdáleného souboru "' + filename + '".'
+        return err 'Chyba při odstraňování vzdáleného souboru "' + path + '".'
       end
     else
-      ftp_rmdir filename
+      ftp_rmdir path
     end
   end
 
   def ftp_rmdir dirname
+    println '.....removuju dir: ' + dirname
     @ftp.nlst(dirname).each do |f|
       ftp_remove f
     end
