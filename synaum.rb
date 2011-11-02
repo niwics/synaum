@@ -715,15 +715,16 @@ EOT
 
   def handle_source_missing (path, src_root)
     if @ftp and @interactive
-      println "\n**  SOURCE_MISSING: " + path
-      print '**  Vyberte akci: Use/load remote (u), Remove remote (r), Skip (s, výchozí):'
+      println "\n    SOURCE_MISSING: " + path + '. Vyberte akci:'
+      print '    Use/load remote (u), Remove remote (r), Skip (s, výchozí), Skip All (a):'
       answer = gets
       print "\n"
       answer = answer.strip.downcase
-      if answer == 'u'
+      if answer == 'a'
+        @interactive = false
+      elsif answer == 'u'
         echo 'SOURCE_MISSING - stahuji: '+path
-        @ftp.getbinaryfile(@dst_dir+path, src_root+path)
-        @created_files += 1
+        ftp_download(@dst_dir+path, src_root+path)
         return
       elsif answer == 'r'
         remove = true
@@ -733,11 +734,9 @@ EOT
     if @remove_missing_sources or remove
       echo 'SOURCE_MISSING - odstraňuji: '+path
       ftp_remove @dst_dir + path
-      @removed_files += 1
       return
     end
 
-    # else - echo
     if @verbose
       echo 'SOURCE_MISSING: '+path
       @source_missing_info = true
@@ -752,16 +751,18 @@ EOT
     end
 
     if @ftp and @interactive
-      println "\n**  REMOTE-MODIFIED: " + path
+      println "\n    REMOTE-MODIFIED: " + path + '. Vyberte akci:'
       while true  # loop for changing options (caused by diff)
-        print '**  Vyberte akci: Use/load remote (u), Overwrite by local (l), Diff (d), Skip (s, výchozí):'
+        print '    Use/load remote (u), Overwrite by local (l), Diff (d), Skip (s, výchozí), Skip All (a):'
         answer = gets
         print "\n"
         answer = answer.strip.downcase
-        if answer == 'u'
+        if answer == 'a'
+          @interactive = false
+          break
+        elsif answer == 'u'
           echo 'REMOTE-MODIFIED - stahuji vzdálený: '+path
-          @ftp.getbinaryfile(@dst_dir+path, @src_dir+path)
-          @created_files += 1
+          ftp_download(@dst_dir+path, src_root+path)
           return false  # false means: NO COPY IN CALLER FUNCTION
         elsif answer == 'l'
           echo overwrite_string
@@ -784,7 +785,6 @@ EOT
       @new_remote_modifieds << path
     end
     
-    # else - echo
     if @verbose
       echo 'REMOTE-MODIFIED: '+path
       @remote_modif_info = true
@@ -899,34 +899,60 @@ EOT
 #    end
 #    return false
 #  end@ftp.list(@dst_dir + dir + f)
+
+
   def ftp_remove path
+    return ftp_action(true, path)
+  end
+
+
+  def ftp_download (path, local_path)
+    return ftp_action(false, path, local_path)
+  end
+
+
+  def ftp_action (is_remove, path, local_path = nil)
     is_file = false
     begin
       @ftp.chdir(path)
-    rescue Exception => e
+    rescue
       is_file = true
     end
     if is_file
       begin
-        @ftp.delete(path)
+        if is_remove
+          @ftp.delete(path)
+        else
+          echo 'Stahuji SOURCE-MISSING soubor: ' + path
+          @ftp.getbinaryfile(path, local_path)
+        end
       rescue
-        return err 'Chyba při odstraňování vzdáleného souboru "' + path + '".'
+        return err 'Chyba při '+ (is_remove ? 'odstraňování':'stahování') +' vzdáleného souboru "' + path + local_path +'".'
       end
     else
-      ftp_rmdir path
+      ftp_action_loop(is_remove, path, local_path)
     end
+    is_remove ? (@removed_files += 1) : (@created_files += 1)
   end
 
-  def ftp_rmdir dirname
-    println '.....removuju dir: ' + dirname
-    @ftp.nlst(dirname).each do |f|
-      ftp_remove f
+  
+  def ftp_action_loop (is_remove, dirname, local_path)
+    if !is_remove
+      begin
+        Dir.mkdir(local_path)
+      rescue
+        return err 'Chyba při vytváření lokální složky "' + local_path + '".'
+      end
     end
-    # del this dir
-    begin
-      @ftp.rmdir(dirname);
-    rescue
-      return err 'Chyba při odstraňování vzdálené složky "' + dirname + '".'
+    @ftp.nlst(dirname).each do |f|
+      ftp_action(is_remove, f, local_path+'/'+File.basename(f))
+    end
+    if is_remove
+      begin
+        @ftp.rmdir(dirname)
+      rescue
+        return err 'Chyba při odstraňování vzdálené složky "' + dirname + '".'
+      end
     end
   end
 
