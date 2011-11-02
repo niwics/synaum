@@ -715,7 +715,9 @@ EOT
 
   def handle_source_missing (path, src_root)
     if @ftp and @interactive
-      println "\n    SOURCE_MISSING: " + path + '. Vyberte akci:'
+      size = ftp_size(path)
+      size_string = size ? format_number(size) : 'DIRECTORY'
+      println "\n    SOURCE_MISSING: " + path + ' ('+ size_string +'). Vyberte akci:'
       print '    Use/load remote (u), Remove remote (r), Skip (s, výchozí), Skip All (a):'
       answer = gets
       print "\n"
@@ -751,7 +753,15 @@ EOT
     end
 
     if @ftp and @interactive
-      println "\n    REMOTE-MODIFIED: " + path + '. Vyberte akci:'
+      size = ftp_size(path)
+      if !size
+        size_string = 'DIRECTORY'
+      elsif size == File.size(src_root+path)
+        size_string = 'STEJNÁ VELIKOST'
+      else
+        size_string = format_number(size)
+      end
+      println "\n    REMOTE-MODIFIED: " + path + ' ('+ size_string +'). Vyberte akci:'
       while true  # loop for changing options (caused by diff)
         print '    Use/load remote (u), Overwrite by local (l), Diff (d), Skip (s, výchozí), Skip All (a):'
         answer = gets
@@ -814,7 +824,6 @@ EOT
         list = Hash[Dir.entries(path).map {|x| [x, nil]}]
       end
     end
-    #p list
     return list
   end
 
@@ -957,6 +966,15 @@ EOT
   end
 
 
+  def ftp_size path
+    begin
+      return @ftp.size(path)
+    rescue
+      return nil
+    end
+  end
+
+
   def is_error?
     return @error
   end
@@ -1055,7 +1073,15 @@ EOT
   end
 end
 
-
+def format_number number
+	if number >= 1024
+    number /= 1024
+    unit = 'KB'
+  else
+    unit = 'B'
+  end
+  return number.to_s.gsub(/(\d)(?=(\d\d\d)+(?!\d))/, "\\1 ") + ' ' + unit
+end
 
 synaum = Synaum.new()
 if !synaum.is_error?
