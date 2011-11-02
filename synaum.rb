@@ -61,6 +61,7 @@ class Synaum
   @ftp_remote_list
   @created_dirs
   @created_files
+  @removed_files
   @source_missing_info
   @remote_modif_info
 
@@ -79,7 +80,7 @@ class Synaum
     @verbose = true
     @interactive = true
     @last_date = Time.gm(1970, 1, 1)  # gm for global time
-    @created_dirs = @created_files = 0
+    @created_dirs = @created_files = @removed_files = 0
     @ignore_libraries = true
     parse_params
     if !@error
@@ -722,6 +723,7 @@ EOT
       if answer == 'u'
         echo 'SOURCE_MISSING - stahuji: '+path
         @ftp.getbinaryfile(@dst_dir+path, src_root+path)
+        @created_files += 1
         return
       elsif answer == 'r'
         remove = true
@@ -731,6 +733,7 @@ EOT
     if @remove_missing_sources or remove
       echo 'SOURCE_MISSING - odstraňuji: '+path
       ftp_remove @dst_dir + path
+      @removed_files += 1
       return
     end
 
@@ -758,6 +761,7 @@ EOT
         if answer == 'u'
           echo 'REMOTE-MODIFIED - stahuji vzdálený: '+path
           @ftp.getbinaryfile(@dst_dir+path, @src_dir+path)
+          @created_files += 1
           return false  # false means: NO COPY IN CALLER FUNCTION
         elsif answer == 'l'
           echo overwrite_string
@@ -970,8 +974,13 @@ EOT
     if @remote_modif_info
       echo 'Některé soubory byly na serveru změněny (REMOTE-MODIFIED), avšak zůstaly na serveru ve své původní podobě. Pokud je chcete přepsat soubory ze zdrojového počítače, použijte přepínač "-f".'
     end
-    if @created_files + @created_dirs > 0
-      real_echo "Bylo synchronizováno #{@created_files} souborů a vytvořeno #{@created_dirs} složek."
+    if @created_files + @created_dirs + @removed_files > 0
+      if @created_files + @created_dirs > 0
+        real_echo "Bylo synchronizováno #{@created_files} souborů a vytvořeno #{@created_dirs} složek."
+      end
+      if @removed_files > 0
+        real_echo "Bylo smazáno #{@removed_files} SOURCE-MISSING souborů."
+      end
     else
       nochange = ' Nebyly provedeny žádné změny.'
     end
