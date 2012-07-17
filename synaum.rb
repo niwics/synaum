@@ -10,7 +10,7 @@ class Synaum
   DATE_FORMAT = "%d/%m/%Y, %H:%M:%S (%A)"
   SYNC_FILENAME = 'synaum-log'
   SYNC_FILES_LIST_NAME = 'synaum-list.txt'
-  SYNAUM_FILE = '/modules/system/ajax/synaum-list-files.php'
+  SYNAUM_FILE = '/ajax/system/synaum-list-files.php'
   SRC_IGNORED_FILES = ['/modules']
   SRC_FTP_IGNORED_FILES = ['/config-local.php']
   DST_IGNORED_FILES = ['synaum-log', 'synaum-list.txt']
@@ -509,6 +509,11 @@ EOT
     rescue
       return err "Nepodařilo se načíst AJAXový PHP skript \"#{@port_string}://#{@http_servername}#{ajax_name}\"."
     end
+    if res.code == '301'
+      err "AJAXového Synaum skript \"#{@port_string}://#{@http_servername}#{ajax_name}\" byl přemístěn (301: Moved Permanently)."
+      echo "Zkontrolujte server name: #{@http_servername} v Synaum souboru (nastavení). Nemá obsahovat \"www\" na začátku?"
+      exit
+    end
     if res.code[0..0] != '2'
       if dst_file_exist?(SYNAUM_FILE)
         err "Chyba při volání AJAXového Synaum skriptu \"#{@port_string}://#{@http_servername}#{ajax_name}\"."
@@ -954,7 +959,7 @@ EOT
       end
     end
     @ftp.nlst(dirname).each do |f|
-      ftp_action(is_remove, f, local_path+'/'+File.basename(f))
+      ftp_action(is_remove, f, dirname+'/'+File.basename(f))
     end
     if is_remove
       begin
