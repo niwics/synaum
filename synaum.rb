@@ -8,12 +8,12 @@ class Synaum
 
   POSSIBLE_PARAMS = ['a', 'b', 'd', 'f', 'g', 'h', 'l', 'r', 's', 't']
   DATE_FORMAT = "%d/%m/%Y, %H:%M:%S (%A)"
-  SYNC_FILENAME = 'synaum-log'
+  SYNC_FILENAME = 'synaum.log'
   SYNC_FILES_LIST_NAME = 'synaum-list.txt'
   SYNAUM_FILE = '/ajax/system/synaum-list-files.php'
   SRC_IGNORED_FILES = ['/modules']
   SRC_FTP_IGNORED_FILES = ['/config-local.php']
-  DST_IGNORED_FILES = ['synaum-log', 'synaum-list.txt']
+  DST_IGNORED_FILES = ['synaum.log', 'synaum-list.txt']
   HELP_NAMES = ['help', '-help', '-h', '--help', '--h']
 
   @error
@@ -549,7 +549,9 @@ EOT
         @ftp_remote_list[@ftp_dir+name] = value
       end
     end
+    # remote file in tmp and also remote
     File.delete('/tmp/'+SYNC_FILES_LIST_NAME)
+    @ftp.delete(@dst_dir+'/'+SYNC_FILES_LIST_NAME)
     return true
   end
 

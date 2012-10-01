@@ -50,7 +50,7 @@ Princip programu
 ----------------
 1. Program zkontroluje zdrojovou složku zadanou třemi způsoby (viz výše)
 2. Načte ze zdrojové složky soubor Synaum s nastavením pro synchronizaci
-3. Pokusí se načíst z cílové složky soubor synaum-log s informacemi
+3. Pokusí se načíst z cílové složky soubor synaum.log s informacemi
     o poslední synchronizaci
 4. V případě FTP zavolá skript http://muj-web/ajax/system/synaum-list-files.php.
     Tento PHP skript uloží do rootu webu do souboru synaum-list.txt strukturu
@@ -70,7 +70,7 @@ Princip programu
        že v cílové nebyly od poslední synchronizace změněny nebo pokud je zadán
        parametr -a (sync All).
 6. Po úspěšné synchronizaci skript uloží informace o jejím průběhu zpátky
-    do souboru synaum-log
+    do souboru synaum.log
 
 
 Povinné položky ve konfiguračním souboru Synaum ve zdrojové složce
