@@ -8,6 +8,7 @@ class Synaum
 
   POSSIBLE_PARAMS = ['a', 'b', 'd', 'f', 'g', 'h', 'l', 'r', 's', 't']
   DATE_FORMAT = "%d/%m/%Y, %H:%M:%S (%A)"
+  GORAZD_DIR = '/home/niwi/Ubuntu One/Gorazd'
   SYNC_FILENAME = 'synaum.log'
   SYNC_FILES_LIST_NAME = 'synaum-list.txt'
   SYNAUM_FILE = '/ajax/system/synaum-list-files.php'
@@ -147,19 +148,24 @@ class Synaum
       @src_ignored_files += SRC_FTP_IGNORED_FILES
     end
     
+    # check Gorazd dir
+    if !File.exist?(GORAZD_DIR)
+      err 'Nebyla nalezena kořenová složka pro RS Gorazd: "' + GORAZD_DIR + '".'
+      return false
+    end
+    
     return true
   end
 
 
   def open_output_log
     # create dirs if they don't exist
-    this_dir = File.dirname(__FILE__)
     website_dirname = @website.gsub('/', '_')
     now = Time.now().strftime("%Y-%m-%d, %H:%M:%S (%A)")
-    cond_mkdir_local(this_dir+'/logs')
-    cond_mkdir_local(this_dir+'/logs/'+website_dirname)
-    cond_mkdir_local(this_dir+'/logs/'+website_dirname+'/'+@mode)
-    @output_log = File.open(this_dir+'/logs/'+website_dirname+'/'+@mode+'/'+now, "w")
+    cond_mkdir_local(GORAZD_DIR+'/Synaum/logs')
+    cond_mkdir_local(GORAZD_DIR+'/Synaum/logs/'+website_dirname)
+    cond_mkdir_local(GORAZD_DIR+'/Synaum/logs/'+website_dirname+'/'+@mode)
+    @output_log = File.open(GORAZD_DIR+'/Synaum/logs/'+website_dirname+'/'+@mode+'/'+now, "w")
   end
 
 
@@ -175,16 +181,11 @@ class Synaum
     else
       module_msg = is_main ? '' : ' modulu z'
       # try to select the website from the parent folder
-      orig_path = Dir.pwd
-      Dir.chdir(File.dirname(__FILE__))
-      Dir.chdir('..')
-      parent_dir = Dir.pwd
-      src_dir = script_based_dir = parent_dir+'/'+website
-      Dir.chdir(orig_path)
+      src_dir = GORAZD_DIR+'/'+website
       if !File.exist?(src_dir)
         # search for all folders which names starts with the given name
         if is_main
-          res = search_for_source_dir(website, parent_dir)
+          res = search_for_source_dir(website, GORAZD_DIR)
           if res
             return res
           end
@@ -192,13 +193,13 @@ class Synaum
         # try to load path from the config file
         if @config_dir != nil # is cached in @config_dir yet?
           src_dir = @config_dir+'/'+website
-        elsif !File.exist?(File.dirname(__FILE__)+"/config")
+        elsif !File.exist?(GORAZD_DIR+"/config")
           @config_dir = false # for future use
-          err 'Nepodařilo se najít složku "'+ src_dir +'" pro provedení synchronizace'+ module_msg +' webu "'+ website +'", ani nebyl nalezen soubor "'+ File.dirname(__FILE__) +'/config", odkud by bylo možné načíst cestu k této složce.'
+          err 'Nepodařilo se najít složku "'+ src_dir +'" pro provedení synchronizace'+ module_msg +' webu "'+ website +'", ani nebyl nalezen soubor "'+ GORAZD_DIR + '/config", odkud by bylo možné načíst cestu k této složce.'
           return err "Možné zadání cesty ke složce:\n - jako parametr skriptu (např. /work/my-website)\n - v parametru jen název složky např. my-website)\n     - a tato složka musí být umístěna vedle složky se tímto Synaum skriptem\n     - NEBO cesta musí být zadána v souboru config umístěném vedl tohoto Synaum skriptu."
         else  # load value and cache it into the variable @config_dir
           # load value from config file
-          config_file = File.open(File.dirname(__FILE__)+"/config")
+          config_file = File.open(GORAZD_DIR+"/config")
           while line = config_file.gets
             line.chomp!
             if line[0,1] != '#'
@@ -215,8 +216,7 @@ class Synaum
                 return res
               end
             end
-            dir_string = (script_based_dir == src_dir ? '' : script_based_dir + ' ani ') + src_dir
-            return err 'Nebyla nalezena složka "'+ dir_string +'" pro provedení synchronizace'+ module_msg +' webu "' + website + '".'
+            return err 'Nebyla nalezena složka "'+ src_dir +'" pro provedení synchronizace'+ module_msg +' webu "' + website + '".'
           end
         end
       end
