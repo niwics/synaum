@@ -504,19 +504,20 @@ EOT
     if !http.started?
       return err "Nepodařilo se vytvořit HTTP připojení se serverem \"#{@port_string}://#{@http_servername}\". Zkontrolujte adresu serveru (automaticky je shodná s FTP adresou, ale můžete ji také upravit v konfiguračním souboru \"#{@src_dir}/synaum\"."
     end
+    script = "\"#{@port_string}://#{@http_servername}#{ajax_name}\""
     begin
       res = http.get(ajax_name)
     rescue
-      return err "Nepodařilo se načíst AJAXový PHP skript \"#{@port_string}://#{@http_servername}#{ajax_name}\"."
+      return err "Nepodařilo se načíst AJAXový PHP skript #{script}."
     end
     if res.code == '301'
-      err "AJAXového Synaum skript \"#{@port_string}://#{@http_servername}#{ajax_name}\" byl přemístěn (301: Moved Permanently)."
+      err "AJAXového Synaum skript #{script} byl přemístěn (301: Moved Permanently)."
       echo "Zkontrolujte server name: #{@http_servername} v Synaum souboru (nastavení). Nemá obsahovat \"www\" na začátku?"
       exit
     end
     if res.code[0..0] != '2'
       if dst_file_exist?(SYNAUM_FILE)
-        err "Chyba při volání AJAXového Synaum skriptu \"#{@port_string}://#{@http_servername}#{ajax_name}\"."
+        err "Chyba při volání AJAXového Synaum skriptu #{script}."
         echo "Skript na FTP existuje, ale jeho volání přes HTTP selhalo."
         echo "HTTP odpověď: " + res.code + ": " + res.message
         exit
@@ -528,15 +529,15 @@ EOT
         @ignore_libraries = false
         return true
       else
-        err "Nebyla provedena inicializace a ani synchronizace.\nAJAXový Synaum skript \"#{@port_string}://#{@http_servername}#{ajax_name}\" nebyl nalezen."
+        err "Nebyla provedena inicializace a ani synchronizace.\nAJAXový Synaum skript #{script} nebyl nalezen."
         exit
       end
     end
     if res.body != '1'
-      return err "Neúspěšné volání AJAXového PHP skriptu - skript \"#{@port_string}://#{@http_servername}#{ajax_name}\" nevrátil hodnotu \"1\"."
+      return err "Neúspěšné volání AJAXového PHP skriptu - skript #{script} nevrátil hodnotu \"1\"."
     end
     if !dst_file_exist?(SYNC_FILES_LIST_NAME)
-      return err "Nepodařilo se najít vzdálený soubor \"#{@dst_dir}/#{SYNC_FILES_LIST_NAME}\"."
+      return err "Nepodařilo se najít vzdálený soubor \"#{@dst_dir}/#{SYNC_FILES_LIST_NAME}\" po volání skriptu #{script}."
     end
     # load data
     @ftp.getbinaryfile(@dst_dir+'/'+SYNC_FILES_LIST_NAME, '/tmp/'+SYNC_FILES_LIST_NAME)
