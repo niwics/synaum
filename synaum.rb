@@ -7,7 +7,7 @@ require "fileutils"
 class Synaum
 
   POSSIBLE_PARAMS = ['a', 'b', 'd', 'f', 'g', 'h', 'l', 'r', 's', 't']
-  DATE_FORMAT = "%d/%m/%Y, %H:%M:%S (%A)"
+  DATE_FORMAT = "%Y-%m-%d, %H:%M:%S (%A)"
   GORAZD_DIR = '/home/niwi/Ubuntu One/Gorazd'
   SYNC_FILENAME = 'synaum.log'
   SYNC_FILES_LIST_NAME = 'synaum-list.txt'
@@ -408,8 +408,8 @@ class Synaum
             when 'last-synchronized' then
               arr = value.split(', ')
               begin
-                vals = arr[0].split('/') + arr[1].split(':')
-                @last_date = Time.mktime(vals[2], vals[1], vals[0], vals[3], vals[4], vals[5])
+                vals = arr[0].split('-') + arr[1].split(':')
+                @last_date = Time.mktime(vals[0], vals[1], vals[2], vals[3], vals[4], vals[5])
               rescue
                 echo "Nepodařilo se načíst datum poslední synchronizace (hodnota \"#{value}\") z konfiguračního souboru \"#{@dst_dir}/#{SYNC_FILENAME}\"."
               end
@@ -438,7 +438,7 @@ class Synaum
         return err 'Minulý režim synchronizace byl "deep", tedy s fyzickým kopírováním souborů do cílové složky. Není proto možné provést synchronizaci "local", která pracuje se symliky. Smažte prosím nejdříve cílovou složku "'+ @dst_dir +'" nebo její obsah.'
       end
     else
-      real_echo 'Nebyl nalezen soubor s informacemi o poslední synchronizaci.'
+      real_echo 'Nebyl nalezen soubor s informacemi o poslední synchronizaci.'    
     end
     return true
   end
@@ -449,7 +449,7 @@ class Synaum
       echo 'Zapisuji do výstupního logu...'
     end
     # write sync data to the sync file
-    now_date = Time.now.strftime(DATE_FORMAT)
+    now_date = (Time.now + 1).strftime(DATE_FORMAT)
     log_msg = <<EOT
 # Log synchronizacniho skriptu Synaum pro system Gorazd
 # author Miroslav Kvasnica - niwi (miradrda@volny.cz), niwi.cz
@@ -512,7 +512,7 @@ EOT
     end
     if res.code == '301'
       err "AJAXového Synaum skript #{script} byl přemístěn (301: Moved Permanently)."
-      echo "Zkontrolujte server name: #{@http_servername} v Synaum souboru (nastavení). Nemá obsahovat \"www\" na začátku?"
+      echo "Zkontrolujte server name: #{@http_servername} v Synaum souboru (nastavení). Neměl by obsahovat \"www\" na začátku?"
       exit
     end
     if res.code[0..0] != '2'
