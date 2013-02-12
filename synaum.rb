@@ -1,5 +1,7 @@
 #!/usr/bin/ruby
+# encoding: utf-8
 # author Miroslav Kvasnica - niwi (miradrda@volny.cz), niwi.cz, 2010
+
 require 'net/ftp'
 require 'net/http'
 require "fileutils"
@@ -511,7 +513,7 @@ EOT
       return err "Nepodařilo se načíst AJAXový PHP skript #{script}."
     end
     if res.code == '301'
-      err "AJAXového Synaum skript #{script} byl přemístěn (301: Moved Permanently)."
+      err "AJAXový Synaum skript #{script} byl přemístěn (301: Moved Permanently)."
       echo "Zkontrolujte server name: #{@http_servername} v Synaum souboru (nastavení). Neměl by obsahovat \"www\" na začátku?"
       exit
     end
@@ -532,9 +534,6 @@ EOT
         err "Nebyla provedena inicializace a ani synchronizace.\nAJAXový Synaum skript #{script} nebyl nalezen."
         exit
       end
-    end
-    if res.body != '1'
-      return err "Neúspěšné volání AJAXového PHP skriptu - skript #{script} nevrátil hodnotu \"1\"."
     end
     if !dst_file_exist?(SYNC_FILES_LIST_NAME)
       return err "Nepodařilo se najít vzdálený soubor \"#{@dst_dir}/#{SYNC_FILES_LIST_NAME}\" po volání skriptu #{script}."
