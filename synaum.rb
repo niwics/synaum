@@ -544,7 +544,12 @@ EOT
     while line = lists_file.gets
       line.chomp!
       if line[0,1] != '#' and line != ''
-        name, value = line.split("\t", 2)
+        begin
+            name, value = line.split("\t", 2)
+        rescue
+            err "Chyba v načítaném souboru \"#{@dst_dir}/#{SYNC_FILES_LIST_NAME}\": \"#{line}\""
+            exit
+        end
         @ftp_remote_list[@ftp_dir+name] = value
       end
     end
