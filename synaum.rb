@@ -792,9 +792,9 @@ EOT
         elsif answer == 'd'
           tmp_path = '/tmp/remote_synaum_diff'
           @ftp.getbinaryfile(@dst_dir+path, tmp_path)
-          res = system('kompare '+ src_root+path +' '+ tmp_path)
+          res = system('kompare "'+ src_root+path +'" "'+ tmp_path + '"')
           if !res
-            println 'Nebyl nalezen program Kompare pro porovnání souborů!'
+            println 'Chyba při spouštění programu Kompare pro porovnání souborů!'
           end
           File.delete(tmp_path)
         else  # skip - end of loop
