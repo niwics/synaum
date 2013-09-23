@@ -10,7 +10,7 @@ class Synaum
 
   POSSIBLE_PARAMS = ['a', 'b', 'd', 'f', 'g', 'h', 'l', 'r', 's', 't']
   DATE_FORMAT = "%Y-%m-%d, %H:%M:%S (%A)"
-  GORAZD_DIR = '/home/niwi/Ubuntu One/Gorazd'
+  SYNAUM_CONFIG = '/etc/synaum'
   SYNC_FILENAME = 'synaum.log'
   SYNC_FILES_LIST_NAME = 'synaum-list.txt'
   SYNAUM_FILE = '/ajax/system/synaum-list-files.php'
@@ -18,6 +18,8 @@ class Synaum
   SRC_FTP_IGNORED_FILES = ['/config-local.php']
   DST_IGNORED_FILES = ['synaum.log', 'synaum-list.txt']
   HELP_NAMES = ['help', '-help', '-h', '--help', '--h']
+
+  @gorazd_dir
 
   @error
   @verbose
@@ -70,6 +72,7 @@ class Synaum
 
   def initialize
     # default values
+    @gorazd_dir = ''
     @ftp_mode = true
     @ftp_dir = ''
     @local_dir = ''
@@ -150,9 +153,15 @@ class Synaum
       @src_ignored_files += SRC_FTP_IGNORED_FILES
     end
     
-    # check Gorazd dir
-    if !File.exist?(GORAZD_DIR)
-      err 'Nebyla nalezena kořenová složka pro RS Gorazd: "' + GORAZD_DIR + '".'
+    # load and check Gorazd dir    
+    if !File.exist?(SYNAUM_CONFIG)
+      err 'Nebyl nalezen konfigurační soubor pro Synaum: "' + SYNAUM_CONFIG + '".'
+      return false
+    end
+    # so where is the Gorazd dir?
+    @gorazd_dir = File.read(SYNAUM_CONFIG).strip!()
+    if !File.exist?(@gorazd_dir)
+      err 'Nebyla nalezena kořenová složka pro RS Gorazd: "' + @gorazd_dir + '".'
       return false
     end
     
@@ -164,10 +173,10 @@ class Synaum
     # create dirs if they don't exist
     website_dirname = @website.gsub('/', '_')
     now = Time.now().strftime("%Y-%m-%d, %H:%M:%S (%A)")
-    cond_mkdir_local(GORAZD_DIR+'/Synaum/logs')
-    cond_mkdir_local(GORAZD_DIR+'/Synaum/logs/'+website_dirname)
-    cond_mkdir_local(GORAZD_DIR+'/Synaum/logs/'+website_dirname+'/'+@mode)
-    @output_log = File.open(GORAZD_DIR+'/Synaum/logs/'+website_dirname+'/'+@mode+'/'+now, "w")
+    cond_mkdir_local(@gorazd_dir+'/Synaum/logs')
+    cond_mkdir_local(@gorazd_dir+'/Synaum/logs/'+website_dirname)
+    cond_mkdir_local(@gorazd_dir+'/Synaum/logs/'+website_dirname+'/'+@mode)
+    @output_log = File.open(@gorazd_dir+'/Synaum/logs/'+website_dirname+'/'+@mode+'/'+now, "w")
   end
 
 
@@ -183,11 +192,11 @@ class Synaum
     else
       module_msg = is_main ? '' : ' modulu z'
       # try to select the website from the parent folder
-      src_dir = GORAZD_DIR+'/'+website
+      src_dir = @gorazd_dir+'/'+website
       if !File.exist?(src_dir)
         # search for all folders which names starts with the given name
         if is_main
-          res = search_for_source_dir(website, GORAZD_DIR)
+          res = search_for_source_dir(website, @gorazd_dir)
           if res
             return res
           end
@@ -195,13 +204,13 @@ class Synaum
         # try to load path from the config file
         if @config_dir != nil # is cached in @config_dir yet?
           src_dir = @config_dir+'/'+website
-        elsif !File.exist?(GORAZD_DIR+"/config")
+        elsif !File.exist?(@gorazd_dir+"/config")
           @config_dir = false # for future use
-          err 'Nepodařilo se najít složku "'+ src_dir +'" pro provedení synchronizace'+ module_msg +' webu "'+ website +'", ani nebyl nalezen soubor "'+ GORAZD_DIR + '/config", odkud by bylo možné načíst cestu k této složce.'
+          err 'Nepodařilo se najít složku "'+ src_dir +'" pro provedení synchronizace'+ module_msg +' webu "'+ website +'", ani nebyl nalezen soubor "'+ @gorazd_dir + '/config", odkud by bylo možné načíst cestu k této složce.'
           return err "Možné zadání cesty ke složce:\n - jako parametr skriptu (např. /work/my-website)\n - v parametru jen název složky např. my-website)\n     - a tato složka musí být umístěna vedle složky se tímto Synaum skriptem\n     - NEBO cesta musí být zadána v souboru config umístěném vedl tohoto Synaum skriptu."
         else  # load value and cache it into the variable @config_dir
           # load value from config file
-          config_file = File.open(GORAZD_DIR+"/config")
+          config_file = File.open(@gorazd_dir+"/config")
           while line = config_file.gets
             line.chomp!
             if line[0,1] != '#'
@@ -234,7 +243,7 @@ class Synaum
     possible_dirs = []
     Dir.entries(parent_dir).each do |filename|
       if filename =~ /^#{website}/ and File.directory?(parent_dir+'/'+filename)\
-          and File.exist?(parent_dir+'/'+filename+"/synaum")
+          and File.exist?(parent_dir+'/'+filename+"/synaum") # test of synaum file should be elsewhere...
         possible_dirs << filename
       end
     end
